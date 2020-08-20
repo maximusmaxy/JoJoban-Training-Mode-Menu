@@ -1,6 +1,6 @@
 # Jojo training mode menu
 
-This is the update version of the jojo training mode with the new menu features. It includes everything the previous training modes had and much more. 
+This is the updated version of the jojo training mode with the new menu features. It includes everything the previous training modes had and much more. 
 
 Developed specifically for JoJo's Bizarre Adventure (Japan 990913, NO CD) (jojoban) though other versions should work.
 
@@ -10,7 +10,7 @@ It is still undergoing development so more features will be added in the future.
 
 # Features
 
-You can enable and disable the following system features
+You can enable and disable the following system features:
 
 - Music
 - Gui (Simple and advanced)
@@ -19,13 +19,19 @@ You can enable and disable the following system features
 - Stand Gauge Refill
 - Infinite Protection System (IPS)
 
+## Guard Action
+
+Can be used to perform the following actions on guard or after a delay:
+
+- Push Block
+- Guard Cancel
+
+To use this feature when enabled use start and hold away from you to set your opponent into blocking mode. Once they block an attack they will automatically perform the selected guard action after the desired amount of frames.
+
+
 ## Air Tech
 
 Air teching can be set to on or off with 4 options. Up/Neutral, Down, Away or toward with delay
-
-## Guard Cancel
-
-Guard cancel can be set to on or off with delay. To use this feature when enabled use start and hold away from you to set your opponent into blocking mode. Once they block an attack they will automatically guard cancel after the desired amount of frames.
 
 ## Direct Control
 

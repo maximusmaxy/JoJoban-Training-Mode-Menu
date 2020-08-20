@@ -35,8 +35,8 @@ local hud = {
 -- They will be replaced when the settings are saved to menu settings.txt
 
 local options = {
-	guardCancel = false, 
-	guardCancelDelay = 0,
+	guardAction = 1,
+	guardActionDelay = 0,
 	airTech = true,
 	airTechDirection = 1,
 	airTechDelay = 0,
@@ -154,13 +154,18 @@ local battleOptions = {
 
 local enemyOptions = {
 	{
-		name = "Guard Cancel:",
-		key = "guardCancel",
-		type = optionType.bool
+		name = "Guard Action",
+		key = "guardAction",
+		type = optionType.list,
+		list = {
+			"Default",
+			"Push block",
+			"Guard Cancel"
+		}
 	},
 	{
-		name = "Guard Cancel Delay:",
-		key = "guardCancelDelay",
+		name = "Guard Action Delay:",
+		key = "guardActionDelay",
 		type = optionType.int,
 		min = 0,
 		max = 15
@@ -290,19 +295,18 @@ local p1 = {
 	inputs = 0,
 	previousInputs = 0,
 	recording = false,
-	playback = false,
 	loop = false,
 	displayComboCounter = 0,
 	comboCounterColor = "white",
 	recorded = {},
-	recordedFlipped = {},
-	recordedDirection = 0,
-	inputPlayback = {},
-	inputPlaybackFlipped = {},
-	inputPlaybackDirection = 0,
+	recordedFacing = 0,
+	inputPlayback = nil,
+	inputPlaybackFacing = 0,
 	inputHistoryTable = {},
+	playback = nil,
 	playbackCount = 0,
-	playbackTable = nil,
+	playbackFacing = 0,
+	playbackFlipped = false,
 	guarding = false,
 	previousGuarding = false,
 	animationState = 0,
@@ -522,7 +526,9 @@ initButtons(p2)
 -- Reads the inputs.txt file and turns it into an array of hex values containing p1 and p2 inputs
 function readInputsFile()
 	p1.inputPlayback = {}
+	p1.inputPlaybackFacing = 1
 	p2.inputPlayback = {}
+	p2.inputPlaybackFacing = 0
 	local f, err = io.open("inputs.txt", "r")
 	if err then 
 		print("Error reading inputs.txt")
@@ -534,17 +540,14 @@ function readInputsFile()
 		if (line ~= "" and line:sub(1, 1) ~= "-") then
 			if (line == "P1") then
 				player = p1
-				player.inputPlaybackDirection = 1
 				inputCount = 1
 			elseif (line == "P2") then
 				player = p2
-				player.inputPlaybackDirection = 0
 				inputCount = 1
 			elseif player then
 				local inputs = parseInput(0, line)
 				for _ = 1, inputs.wait, 1 do
 					player.inputPlayback[inputCount] = inputs.hex
-					player.inputPlaybackFlipped[inputCount] = swapHexDirection(inputs.hex)
 					inputCount = inputCount + 1
 				end
 			end
@@ -814,7 +817,7 @@ function updatePlayer(player, other)
 
 	--Stand refill 
 	if options.standGaugeRefill and player.standHealth == 0 then
-		memory.writebyte(player.memory.standGaugeRefill, player.standGauge)
+		memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
 	end
 end
 
@@ -846,7 +849,7 @@ function checkPlayerInput(player, other)
 			memory.writebyte(other.memory.standGaugeRefill, other.standGaugeMax)
 		end
 
-		if pressed(player.buttons.hk) then
+		if pressed(player.buttons.sk) then
 			memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
 		end
 		return
@@ -857,11 +860,11 @@ function checkPlayerInput(player, other)
 		other.control = true
 
 		if pressed(player.buttons.mk) then
-			memory.writebyte(other.memory.standGaugeRefill, other.standGauge)
+			memory.writebyte(other.memory.standGaugeRefill, other.standGaugeMax)
 		end
 
-		if pressed(player.buttons.hk) then
-			memory.writebyte(player.memory.standGaugeRefill, player.standGauge)
+		if pressed(player.buttons.sk) then
+			memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
 		end
 	else
 		other.control = false
@@ -880,7 +883,7 @@ function checkPlayerInput(player, other)
 		end
 	end
 
-	if held(player.buttons.sk, 15) == 1 then
+	if held(player.buttons.sk, 15) then
 		player.loop = true
 	end
 end
@@ -891,27 +894,32 @@ function record(player)
 	player.recording = not player.recording
 	if player.recording then
 		player.recorded = {}
-		player.recordedFlipped = {}
-		player.recordedDirection = player.facing
+		player.recordedFacing = player.facing
 	end
 end
 
-function replaying(player, loop)
-	player.loop = loop
+function replaying(player)
+	player.loop = false
 	player.recording = false
 	if player.playbackCount == 0 then
-		player.playbackTable = (player.facing == player.recordedDirection and player.recorded or player.recordedFlipped)
-		player.playbackCount = #player.playbackTable
+		player.playback = player.recorded
+		player.playbackCount = #player.recorded
+		player.playbackFacing = player.recordedFacing
+		player.playbackFlipped = player.facing ~= player.recordedFacing
 	else
 		player.playbackCount = 0
 	end
 end
 
 function inputPlayback(player)
-	readInputsFile()
+	player.recording = false
+	player.loop = false
 	if player.playbackCount == 0 then
-		player.playbackTable = (player.facing == player.inputPlaybackDirection and player.inputPlayback or player.inputPlaybackFlipped)
-		player.playbackCount = #player.playbackTable
+		readInputsFile()
+		player.playback = player.inputPlayback
+		player.playbackCount = #player.inputPlayback
+		player.playbackFacing = player.inputPlaybackFacing
+		player.playbackFlipped = player.facing ~= player.inputPlaybackFacing
 	else
 		player.playbackCount = 0
 	end
@@ -932,7 +940,6 @@ function controlPlayer(player, other)
 	-- recording
 	if player.recording then
 		table.insert(player.recorded, player.inputs)
-		table.insert(player.recordedFlipped, swapHexDirection(player.inputs))
 	end
 	-- Direction Lock
 	if player.previousControl and not player.control then
@@ -941,21 +948,26 @@ function controlPlayer(player, other)
 	end
 	-- Player 2 menu option controls
 	if player.number == 2 and player.playbackCount == 0 then
-		-- Guard Cancel
-		if options.guardCancel and player.guarding > 0 then
-			local inputs = (player.facing == 1 and { 0x08, 0x02, 0x1A } or { 0x04, 0x02, 0x16 })
-			local startUps = gcStartup[player.character] or {10, 10}
-			local startUp = (player.stand  == 1 and startUps[2] or startUps[1])
-			for _ = 1, startUp, 1 do
-				table.insert(inputs, 0)
-			end
-			for _ = 1, options.guardCancelDelay, 1 do
-				table.insert(inputs, 1, 0)
-			end
-			print(inputs)
-			player.playbackCount = #inputs
-			player.playbackTable = inputs
-		end 
+		-- Guard Action
+		if player.guarding > 0 then
+			--Push block
+			if options.guardAction == 2 then
+				local direction = bit.band(0x0F, player.inputs)
+				local inputs = { bit.bor(0x70, direction) }
+				insertDelay(inputs, options.guardActionDelay, direction)
+				setPlayback(player, inputs);
+			-- Guard Cancel
+			elseif options.guardAction == 3 then
+				local inputs = (player.facing == 1 and { 0x08, 0x02, 0x1A } or { 0x04, 0x02, 0x16 })
+				local startUps = gcStartup[player.character] or {10, 10}
+				local startUp = (player.stand  == 1 and startUps[2] or startUps[1])
+				for _ = 1, startUp, 1 do
+					table.insert(inputs, 0)
+				end
+				insertDelay(inputs, options.guardActionDelay, bit.band(player.inputs, 0x0F))
+				setPlayback(player, inputs)
+			end 
+		end
 		-- Air Tech
 		if options.airTech and canAirTech(player) then
 			local inputs
@@ -968,18 +980,14 @@ function controlPlayer(player, other)
 			elseif options.airTechDirection == 4 then
 				inputs = (player.facing == 1 and { 0x74 } or { 0x78 })
 			end
-			for _ = 1, options.airTechDelay, 1 do
-				table.insert(inputs, 1, 0)
-			end
-			player.playbackCount = #inputs
-			player.playbackTable = inputs
+			insertDelay(inputs, options.airTechDelay, 0)
+			setPlayback(player, inputs)
 		end
 		-- Force Stand
 		if options.forceStand > 1 and canReversal(player) then
 			if (options.forceStand == 2 and player.stand ~= 1) or
 				(options.forceStand == 3 and player.stand == 1) then
-				player.playbackTable = { 0x80 }
-				player.playbackCount = 1
+				setPlayback(player, { 0x80 })
 				memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
 			end
 		end
@@ -990,18 +998,33 @@ function controlPlayer(player, other)
 		tableCopy(inputs, input.overwrite)
 	-- Input Playback
 	elseif player.playbackCount > 0 then
-		local index = #player.playbackTable - player.playbackCount + 1
-		local inputs = hexToPlayerInput(player.playbackTable[index], player.name)
+		local hex =  player.playback[#player.playback - player.playbackCount + 1]
+		hex = (player.playbackFlipped and swapHexDirection(hex) or hex)
+		local inputs = hexToPlayerInput(hex, player.name)
 		tableCopy(inputs, input.overwrite)
 		player.playbackCount = player.playbackCount - 1
 		if player.playbackCount == 0 and player.loop then
-			player.playbackCount = #player.playbackTable
+			player.playbackFlipped = player.facing ~= player.playbackFacing
+			player.playbackCount = #player.playback
 		end
 	-- Direction Lock
 	elseif player.directionLock ~= 0 then
 		local direction = (player.facing == player.directionLockFacing and player.directionLock or swapHexDirection(player.directionLock))
 		local inputs = hexToPlayerInput(direction, player.name)
 		tableCopy(inputs, input.overwrite)
+	end
+end
+
+function setPlayback(player, table)
+	player.playback = table
+	player.playbackCount = #table
+	player.playbackFacing = player.facing
+	player.loop = false
+end
+
+function insertDelay(inputs, number, hex)
+	for _ = 1, number, 1 do
+		table.insert(inputs, 1, hex)
 	end
 end
 
