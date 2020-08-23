@@ -9,7 +9,7 @@
 -- A half transparent teal would be written as 0x00808080
 
 local colors = {
-	menuBackgroundColor = 0xFFFFFF80,
+	menuBackgroundColor = 0xAAAAAAFF,
 	menuTitleColor = "grey",
 	menuSelectedColor = "green",
 	menuUnselectedColor = "red",
@@ -48,7 +48,8 @@ local options = {
 	standGaugeRefill = true,
 	guiStyle = 2,
 	forceStand = 1,
-	ips = true
+	ips = true,
+	perfectAirTech = false
 }
 
 -----------------------
@@ -115,6 +116,7 @@ local systemOptions = {
 		type = optionType.list,
 		list = {
 			"Replay",
+			"Replay P2",
 			"Input playback"
 		}
 	},
@@ -192,6 +194,11 @@ local enemyOptions = {
 		type = optionType.int,
 		min = 0,
 		max = 10
+	},
+	{
+		name = "O Frame Air Tech",
+		key  = "perfectAirTech",
+		type = optionType.bool
 	},
 	{
 		name = "Force Stand:",
@@ -535,20 +542,16 @@ function readInputsFile()
 		return 
 	end
 	local player = nil
-	local inputCount = 1
 	for line in f:lines() do
 		if (line ~= "" and line:sub(1, 1) ~= "-") then
 			if (line == "P1") then
 				player = p1
-				inputCount = 1
 			elseif (line == "P2") then
 				player = p2
-				inputCount = 1
 			elseif player then
-				local inputs = parseInput(0, line)
+				local inputs = parseInput(line)
 				for _ = 1, inputs.wait, 1 do
-					player.inputPlayback[inputCount] = inputs.hex
-					inputCount = inputCount + 1
+					player.inputPlayback[#player.inputPlayback + 1] = inputs.hex
 				end
 			end
 		end
@@ -557,7 +560,7 @@ function readInputsFile()
 end
 
 -- Converts the input text into a hex value and a wait time
-function parseInput(shift, line)
+function parseInput(line)
 	local _, _, number = line:find("(%d+)")
 	local inputs = {
 		hex = 0,
@@ -566,7 +569,7 @@ function parseInput(shift, line)
 	for letter in line:lower():gmatch("%a") do
 		local inputHex = parserDictionary[letter]
 		if inputHex then
-			inputs.hex = bit.bor(inputs.hex, bit.lshift(inputHex, shift))
+			inputs.hex = bit.bor(inputs.hex, inputHex)
 		end
 	end
 	return inputs
@@ -669,6 +672,10 @@ function writeSettings()
 	for k, v in pairs(options) do
 		table.insert(strings, k:upper().." = "..tostring(v))
 	end
+	table.insert(strings, "P1")
+	insertPlayerRecording(strings, p1, 1)
+	table.insert(strings, "P2")
+	insertPlayerRecording(strings, p2, 0)
 	local _, err = f:write(table.concat(strings, "\n"))
 	if err then
 		menu.info = "Error saving settings"
@@ -678,27 +685,80 @@ function writeSettings()
 	f:close()
 end
 
+function insertPlayerRecording(strings, player, facing)
+	if #player.recorded == 0 then return end
+	local previousHex = player.recorded[1]
+	local hex = previousHex
+	local count = 1
+	local str = hexToInputString(hex)
+	for i = 2, #player.recorded, 1 do
+		hex =  player.recorded[i] 
+		hex = (facing == player.recordedFacing and hex or swapHexDirection(hex))
+		if hex == previousHex then
+			count = count + 1
+		else
+			str = str..tostring(count)
+			table.insert(strings, str)
+			str = hexToInputString(hex)
+			count = 1
+		end
+		previousHex = hex
+	end
+end
+
+function hexToInputString(hex)
+	local str = ""
+	for k, v in pairs(parserDictionary) do
+		if bit.band(hex, v) == v then
+			str = str..k
+		end
+	end
+	return str
+end
+
 --Read settings from menu settings.txt
 function readSettings()
 	local f, err = io.open("menu settings.txt", "r")
 	if err then 
 		return 
 	end
+	local player = nil
 	for line in f:lines() do
-		for k, v in pairs(options) do
-			local _, _, key, value = line:upper():find("(%w+)%s*=%s*(%w+)")
-			if key == k:upper() then
-				local type = type(v)
-				if type == "boolean" then
-					options[k] = (value == "TRUE" and true or false)
-				elseif type == "number" then
-					options[k] = tonumber(value)
+		if #line ~= 0 then
+			if line == "P1" then
+				player = p1
+				player.recorded = {}
+				player.recordedFacing = 1
+			elseif line == "P2" then
+				player = p2
+				player.recorded = {}
+				player.recordedFacing = 0
+			elseif player then
+				local inputs = parseInput(line)
+				for _ = 1, inputs.wait, 1 do
+					player.recorded[#player.recorded + 1] = inputs.hex
 				end
-				break
+			else
+				setOption(line)
 			end
 		end
 	end
 	f:close()
+end
+
+function setOption(line)
+	for k, v in pairs(options) do
+		local _, _, key, value = line:upper():find("(%w+)%s*=%s*(%w+)")
+		if key == k:upper() then
+			local type = type(v)
+			if type == "boolean" then
+				options[k] = (value == "TRUE" and true or false)
+			elseif type == "number" then
+				options[k] = tonumber(value)
+			end
+			break
+		end
+	end
 end
 
 -- Reads from memory and assigns variables based on the memory
@@ -878,6 +938,8 @@ function checkPlayerInput(player, other)
 		if options.strongKickHotkey == 1 then
 			replaying(player)
 		elseif options.strongKickHotkey == 2 then
+			replayTransfer(player, other)
+		elseif options.strongKickHotkey == 3 then
 			inputPlayback(player)
 			inputPlayback(other)
 		end
@@ -908,6 +970,21 @@ function replaying(player)
 		player.playbackFlipped = player.facing ~= player.recordedFacing
 	else
 		player.playbackCount = 0
+	end
+end
+
+function replayTransfer(player, other)
+	player.recording = false
+	player.loop = false
+	other.recording = false
+	other.loop = false
+	if other.playbackCount == 0 then
+		other.playback = player.recorded
+		other.playbackCount = #player.recorded
+		other.playbackFacing = player.recordedFacing
+		other.playbackFlipped = other.facing ~= player.recordedFacing
+	else
+		other.playbackCount = 0
 	end
 end
 
@@ -949,39 +1026,22 @@ function controlPlayer(player, other)
 	-- Player 2 menu option controls
 	if player.number == 2 and player.playbackCount == 0 then
 		-- Guard Action
-		if player.guarding > 0 then
+		if canGuardAction(player) then
 			--Push block
 			if options.guardAction == 2 then
-				local direction = bit.band(0x0F, player.inputs)
-				local inputs = { bit.bor(0x70, direction) }
-				insertDelay(inputs, options.guardActionDelay, direction)
-				setPlayback(player, inputs);
+				pushBlock(player)
 			-- Guard Cancel
 			elseif options.guardAction == 3 then
-				local inputs = (player.facing == 1 and { 0x08, 0x02, 0x1A } or { 0x04, 0x02, 0x16 })
-				local startUps = gcStartup[player.character] or {10, 10}
-				local startUp = (player.stand  == 1 and startUps[2] or startUps[1])
-				for _ = 1, startUp, 1 do
-					table.insert(inputs, 0)
-				end
-				insertDelay(inputs, options.guardActionDelay, bit.band(player.inputs, 0x0F))
-				setPlayback(player, inputs)
+				guardCancel(player)
 			end 
 		end
 		-- Air Tech
 		if options.airTech and canAirTech(player) then
-			local inputs
-			if options.airTechDirection == 1 then
-				inputs = { 0x70 }
-			elseif options.airTechDirection == 2 then
-				inputs = { 0x72}
-			elseif options.airTechDirection == 3 then
-				inputs = (player.facing == 1 and { 0x78 } or { 0x74 })
-			elseif options.airTechDirection == 4 then
-				inputs = (player.facing == 1 and { 0x74 } or { 0x78 })
-			end
-			insertDelay(inputs, options.airTechDelay, 0)
-			setPlayback(player, inputs)
+			airTech(player)
+		end
+		--Perfect Air Tech 
+		if options.perfectAirTech and canPerfectAirTech(player) then
+			airTech(player)
 		end
 		-- Force Stand
 		if options.forceStand > 1 and canReversal(player) then
@@ -1028,8 +1088,49 @@ function insertDelay(inputs, number, hex)
 	end
 end
 
+function airTech(player)
+	local inputs
+	if options.airTechDirection == 1 then
+		inputs = { 0x70 }
+	elseif options.airTechDirection == 2 then
+		inputs = { 0x72}
+	elseif options.airTechDirection == 3 then
+		inputs = (player.facing == 1 and { 0x78 } or { 0x74 })
+	elseif options.airTechDirection == 4 then
+		inputs = (player.facing == 1 and { 0x74 } or { 0x78 })
+	end
+	insertDelay(inputs, options.airTechDelay, 0)
+	setPlayback(player, inputs)
+end
+
+function pushBlock(player)
+	local direction = bit.band(0x0F, player.inputs)
+	local inputs = { bit.bor(0x70, direction) }
+	insertDelay(inputs, options.guardActionDelay, direction)
+	setPlayback(player, inputs);
+end
+
+function guardCancel(player)
+	local inputs = (player.facing == 1 and { 0x08, 0x02, 0x1A } or { 0x04, 0x02, 0x16 })
+	local startUps = gcStartup[player.character] or {10, 10}
+	local startUp = (player.stand  == 1 and startUps[2] or startUps[1])
+	for _ = 1, startUp, 1 do
+		table.insert(inputs, 0)
+	end
+	insertDelay(inputs, options.guardActionDelay, bit.band(player.inputs, 0x0F))
+	setPlayback(player, inputs)
+end
+
+function canGuardAction(player)
+	return player.guarding > 0
+end
+
 function canAirTech(player)
 	return player.previousRiseFall == 0x00 and player.riseFall == 0xFF and player.height > 0 and player.hitstun == 1
+end
+
+function canPerfectAirTech(player)
+	return player.previousHitstun == 0 and player.hitstun == 1 and player.height > 0
 end
 
 function canReversal(player)
@@ -1053,9 +1154,9 @@ function openMenu()
 		menu.index = 1
 		menu.options = rootOptions
 		updateMenuInfo()
+		memory.writebyte(0x20713A3, 0x00); -- Bit mask that disables player input
 	else
-		menu.state = 0
-		gui.clearuncommitted()
+		menuClose()
 	end
 end
 
@@ -1102,8 +1203,7 @@ end
 
 function menuCancel()
 	if menu.state == 1 then --menu
-		menu.state = 0
-		gui.clearuncommitted()
+		menuClose()
 	elseif menu.state > 1 then --sub menu
 		menu.state = 1
 		menu.index = menu.previousIndex
@@ -1111,6 +1211,12 @@ function menuCancel()
 		menu.title = "Training Menu"
 		updateMenuInfo()
 	end
+end
+
+function menuClose()
+	menu.state = 0
+	gui.clearuncommitted()
+	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
 end
 
 function menuLeft()
@@ -1339,11 +1445,17 @@ end
 emu.registerstart(function()
 	memory.writebyte(0x20713A8, 0x09) -- Infinite Credits
 	memory.writebyte(0x20312C1, 0x01) -- Unlock all characters
+	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
 	readSettings()
 end)
 
 gui.register(function()
 	guiWriter()
+end)
+
+emu.registerexit(function()
+	gui.clearuncommitted()
+	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
 end)
 
 while true do 
