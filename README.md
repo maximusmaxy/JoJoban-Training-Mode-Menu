@@ -28,10 +28,13 @@ Can be used to perform the following actions on guard or after a delay:
 
 To use this feature when enabled use start and hold away from you to set your opponent into blocking mode. Once they block an attack they will automatically perform the selected guard action after the desired amount of frames.
 
-
 ## Air Tech
 
 Air teching can be set to on or off with 4 options. Up/Neutral, Down, Away or toward with delay
+
+## 0F Air Tech
+
+If an opponent is falling and hit with a move that makes them land on their feet instead of their back, they can air tech on the same frame they are hit. Enable this option to make the opponent 0F Air Tech.
 
 ## Direct Control
 
@@ -45,9 +48,25 @@ Direct character control by holding start has been revamped to include buttons. 
 
 The opponent will automatically turn their stand on or off. This can be used to practice stand break combos quicker. To refill your opponent stand gauge press Medium Kick while the menu is open.
 
+## Reversal
+
+The opponent will perform a move on the first available frame out of hitstun/blockstun or after teching/pushblocking. The current implementation doesn't work with buffered inputs but will allow the following:
+
+- A, B, C, S, A+B+C (Roll)
+- Replay Recorded inputs
+- Replay inputs from inputs.txt
+
+Any empty inputs from the start of recordings will be removed to start performing the action on the first frame.
+
+## Throw Tech
+
+The opponent will automatically tech all throws.
+
 ## Record/Replay
 
-Record your inputs and play them back. The default keys are set to medium kick and heavy kick but can be rebound in the menu. If you hold down the replay button it will be set to loop. To record your opponents inputs you will need to set player 2's controls and record them manually. Alternatively you could use the following feature to play back inputs.
+Record your inputs and play them back. The default keys are set to medium kick and heavy kick but can be rebound in the menu. If you hold down the replay button it will be set to loop. If the menu option is set to replay P2, player 1's inputs will be translated to player 2. This can be used to record player 2's inputs without rebinding or using a separate control scheme.
+
+Alternatively to recording/replaying you could use the following feature to play back inputs.
 
 # Input playback
 

@@ -49,7 +49,9 @@ local options = {
 	guiStyle = 2,
 	forceStand = 1,
 	ips = true,
-	perfectAirTech = false
+	perfectAirTech = false,
+	reversal = 1,
+	throwTech = false
 }
 
 -----------------------
@@ -211,6 +213,26 @@ local enemyOptions = {
 		}
 	},
 	{
+		name = "Reversal:",
+		key = "reversal",
+		type = optionType.list,
+		list = {
+			"None",
+			"A",
+			"B",
+			"C",
+			"S",
+			"A+B+C",
+			"Recording",
+			"Input playback"
+		}
+	},
+	{
+		name = "Throw Tech:",
+		key = "throwTech",
+		type = optionType.bool,
+	}, 
+	{
 		name = "Return",
 		type = optionType.back
 	}
@@ -314,10 +336,12 @@ local p1 = {
 	playbackCount = 0,
 	playbackFacing = 0,
 	playbackFlipped = false,
-	guarding = false,
-	previousGuarding = false,
+	guarding = 0,
+	previousGuarding = 0,
 	animationState = 0,
-	previosAnimationState = 0,
+	previousAnimationState = 0,
+	guardAnimation = 0,
+	standGuardAnimation = 0,
 	riseFall = 0,
 	previousRiseFall = 0,
 	hitstun = false,
@@ -325,11 +349,19 @@ local p1 = {
 	blockstun = 0,
 	previousBlockstun = 0,
 	blocking = false,
+	canAct1 = 0,
+	canAct2 = 0,
 	stand = false,
 	previousIps = 0,
 	ips = 0,
 	scaling = 0,
 	previousScaling = 0,
+	canReversal = false,
+	previousCanReversal = false,
+	reversalCount = 0,
+	canAct = false,
+	previousCanAct = false,
+	frameAdvantage = 0,
 	buttons = {},
 	memory = nil
 }
@@ -352,7 +384,7 @@ end
 
 --Set individual memory values
 
-p1.memory = {
+p1.memory = { 
 	character = 0x203488C,
 	health = 0x205BB28,
 	standHealth = 0x205BB48,
@@ -371,10 +403,15 @@ p1.memory = {
 	stand = 0x00000000, --placeholder need to find this later
 	ips = 0x2034E9E,
 	scaling = 0x2034E9D,
-	height = 0x00000000
+	height = 0x00000000,
+	guardAnimation = 0x00000000,
+	standGuardAnimation = 0x00000000,
+	canAct1 = 0x02034941,
+	canAct2 = 0x02034A25,
+	throwTech = 0x02034A3C --1b0
 }
 
-p2.memory = {
+p2.memory = { 
 	character = 0x2034CAC,
 	health = 0x205BB29,
 	standHealth = 0x205BB49,
@@ -393,7 +430,12 @@ p2.memory = {
 	stand = 0x02034E3F,
 	ips = 0x00000000,
 	scaling = 0x00000000,
-	height = 0x02034D0D
+	height = 0x02034D0D,
+	guardAnimation = 0x02034D92,
+	standGuardAnimation = 0x20355D2,
+	canAct1 = 0x00000000,
+	canAct2 = 0x00000000,
+	throwTech = 0x02034E5C
 }
 
 p1.health = memory.readbyte(p1.memory.health)
@@ -838,6 +880,7 @@ end
 function gameplayLoop() --main loop for gameplay calculations
 	updatePlayer(p1, p2)
 	updatePlayer(p2, p1)
+	-- updateFrameAdvantage(p1, p2)
 	memory.writebyte(0x205CC1A, options.music and 0x80 or 0x00) -- Toggle music off or on
 	memory.writebyte(0x20314B4, 0x63) -- Infinite Clock Time
 	if not options.ips then -- IPS
@@ -879,7 +922,28 @@ function updatePlayer(player, other)
 	if options.standGaugeRefill and player.standHealth == 0 then
 		memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
 	end
+
+	-- Frame Data
+	player.previousCanReversal = player.canReversal
+	player.canReversal = canReversal(player)
+	player.previousCanAct = player.canAct
+	player.canAct = canAct(player)
 end
+
+-- p1Frame = 0
+-- p2Frame = 0
+-- frameAdvantage = 0
+
+-- function updateFrameAdvantage(player, other)
+-- 	if not player.previousCanAct and player.canAct then
+-- 		p1Frame = emu.framecount()
+-- 	end
+-- 	if not other.previousCanReversal and other.canReversal then
+-- 		p2Frame = emu.framecount()
+-- 		frameAdvantage = p2Frame - p1Frame
+-- 	end
+-- 	gui.text(50, 100, frameAdvantage)
+-- end
 
 function inputChecker()
 	checkPlayerInput(p1, p2)
@@ -1003,6 +1067,10 @@ function inputPlayback(player)
 end
 
 function characterControl()
+	if menu.state > 0 then
+		return
+	end
+
 	input.overwrite = {}
 
 	controlPlayer(p1, p2)
@@ -1026,38 +1094,38 @@ function controlPlayer(player, other)
 	-- Player 2 menu option controls
 	if player.number == 2 and player.playbackCount == 0 then
 		-- Guard Action
-		if canGuardAction(player) then
+		if options.guardAction > 1 and canGuardAction(player) then
 			--Push block
 			if options.guardAction == 2 then
 				pushBlock(player)
 			-- Guard Cancel
 			elseif options.guardAction == 3 then
 				guardCancel(player)
-			end 
-		end
+			end
+			player.blocking = false
 		-- Air Tech
-		if options.airTech and canAirTech(player) then
+		elseif options.airTech and canAirTech(player) then
 			airTech(player)
-		end
 		--Perfect Air Tech 
-		if options.perfectAirTech and canPerfectAirTech(player) then
-			airTech(player)
-		end
-		-- Force Stand
-		if options.forceStand > 1 and canReversal(player) then
-			if (options.forceStand == 2 and player.stand ~= 1) or
-				(options.forceStand == 3 and player.stand == 1) then
+		elseif options.perfectAirTech and canPerfectAirTech(player) then
+			airTech(player, true)
+		-- Throw tech
+		elseif options.throwTech and player.throwTech > 0 then
+			throwTech(player)
+		-- Reversals
+		elseif player.canReversal then
+			-- Reversal
+			if options.reversal > 1 then
+				reversal(player)
+			-- Force Stand
+			elseif options.forceStand > 1 and canStand(player) then
 				setPlayback(player, { 0x80 })
 				memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
 			end
 		end
 	end
-	-- Player control
-	if player.control then
-		local inputs = hexToPlayerInput(other.inputs, player.name)
-		tableCopy(inputs, input.overwrite)
 	-- Input Playback
-	elseif player.playbackCount > 0 then
+	if player.playbackCount > 0 then
 		local hex =  player.playback[#player.playback - player.playbackCount + 1]
 		hex = (player.playbackFlipped and swapHexDirection(hex) or hex)
 		local inputs = hexToPlayerInput(hex, player.name)
@@ -1067,6 +1135,10 @@ function controlPlayer(player, other)
 			player.playbackFlipped = player.facing ~= player.playbackFacing
 			player.playbackCount = #player.playback
 		end
+	-- Player control
+	elseif player.control then
+		local inputs = hexToPlayerInput(other.inputs, player.name)
+		tableCopy(inputs, input.overwrite)
 	-- Direction Lock
 	elseif player.directionLock ~= 0 then
 		local direction = (player.facing == player.directionLockFacing and player.directionLock or swapHexDirection(player.directionLock))
@@ -1079,6 +1151,7 @@ function setPlayback(player, table)
 	player.playback = table
 	player.playbackCount = #table
 	player.playbackFacing = player.facing
+	player.playbackFlipped = false
 	player.loop = false
 end
 
@@ -1088,41 +1161,85 @@ function insertDelay(inputs, number, hex)
 	end
 end
 
-function airTech(player)
+function airTech(player, perfect)
 	local inputs
 	if options.airTechDirection == 1 then
 		inputs = { 0x70 }
+		player.reversalCount = (player.stand and 10 or 3)
 	elseif options.airTechDirection == 2 then
 		inputs = { 0x72}
+		player.reversalCount = 10
 	elseif options.airTechDirection == 3 then
 		inputs = (player.facing == 1 and { 0x78 } or { 0x74 })
+		player.reversalCount = 10
 	elseif options.airTechDirection == 4 then
 		inputs = (player.facing == 1 and { 0x74 } or { 0x78 })
+		player.reversalCount = 10
 	end
-	insertDelay(inputs, options.airTechDelay, 0)
+	if not perfect then
+		insertDelay(inputs, options.airTechDelay, 0)
+	end
 	setPlayback(player, inputs)
+	if player.height > 32 then	--player height 32 rolls, 33 doesn't
+		player.reversalCount = player.reversalCount + #inputs
+	else
+		player.reversalCount = 0
+	end
 end
 
 function pushBlock(player)
 	local direction = bit.band(0x0F, player.inputs)
 	local inputs = { bit.bor(0x70, direction) }
 	insertDelay(inputs, options.guardActionDelay, direction)
-	setPlayback(player, inputs);
+	setPlayback(player, inputs)
+	player.reversalCount = 18 + options.guardActionDelay
 end
 
 function guardCancel(player)
 	local inputs = (player.facing == 1 and { 0x08, 0x02, 0x1A } or { 0x04, 0x02, 0x16 })
-	local startUps = gcStartup[player.character] or {10, 10}
-	local startUp = (player.stand  == 1 and startUps[2] or startUps[1])
-	for _ = 1, startUp, 1 do
-		table.insert(inputs, 0)
-	end
 	insertDelay(inputs, options.guardActionDelay, bit.band(player.inputs, 0x0F))
 	setPlayback(player, inputs)
+	--player.reversalCount = 15 Jotaro s.off
+end
+
+function throwTech(player)
+	setPlayback(player, { 0x44 })
+end
+
+function reversal(player)
+	local inputs
+	player.playbackFacing = player.facing
+	player.playbackFlipped = false
+	player.loop = false
+	if options.reversal == 2 then -- A
+		inputs = { bit.bor(0x10, bit.band(0x0F, player.inputs)) }
+	elseif options.reversal == 3 then -- B
+		inputs = { bit.bor(0x20, bit.band(0x0F, player.inputs)) }
+	elseif options.reversal == 4 then -- C
+		inputs = { bit.bor(0x40, bit.band(0x0F, player.inputs)) }
+	elseif options.reversal == 5 then -- S
+		inputs = { bit.bor(0x80, bit.band(0x0F, player.inputs)) }
+	elseif options.reversal == 6 then -- ABC
+		inputs = { bit.bor(0x70, bit.band(0x0F, player.inputs)) }
+	elseif options.reversal == 7 then -- Recording
+		inputs = player.recorded
+		player.playbackFacing = player.recordedFacing
+		player.playbackFlipped = player.facing ~= player.recordedFacing
+	elseif options.reversal == 8 then -- Input playback
+		readInputsFile()
+		inputs = player.inputPlayback
+		player.playbackFacing = player.inputPlaybackFacing
+		player.playbackFlipped = player.facing ~= player.inputPlaybackFacing
+	end
+	player.playback = inputs
+	player.playbackCount = #inputs
+	while (player.playback[#player.playback - player.playbackCount + 1] == 0) do -- trim empty inputs
+		player.playbackCount = player.playbackCount - 1
+	end
 end
 
 function canGuardAction(player)
-	return player.guarding > 0
+	return player.previousGuarding == 0 and player.guarding > 0
 end
 
 function canAirTech(player)
@@ -1134,10 +1251,17 @@ function canPerfectAirTech(player)
 end
 
 function canReversal(player)
-	if not player.blocking and player.guarding > 0 then
+	player.reversalCount = player.reversalCount - 1
+	if player.reversalCount == 1 then
+		player.reversalCount = 0
+		return true
+	end
+	if not player.blocking and canGuardAction(player) then
 		player.blocking = true
 	end
-	if player.blocking and player.blockstun == 0xFF then
+	if player.blocking and 
+		(player.stand  == 0 and player.guardAnimation == 2) or
+		(player.stand == 1 and player.standGuardAnimation == 2) then
 		player.blocking = false
 		return true
 	end
@@ -1145,6 +1269,15 @@ function canReversal(player)
 		return true
 	end
 	return false
+end
+
+function canStand(player) 
+	return (options.forceStand == 2 and player.stand ~= 1) or
+		(options.forceStand == 3 and player.stand == 1)
+end
+
+function canAct(player)
+	return player.canAct1 == 0 and player.canAct2 == 0
 end
 
 function openMenu()
@@ -1329,10 +1462,10 @@ function guiWriter() -- Writes the GUI
 	elseif options.guiStyle == 3 and menu.state == 0 then
 		gui.text(146,45,"Damage: ") -- Damage of P1's last hit
 		guiTextAlignRight(236,45,p2.previousDamage) -- Damage of P1's last hit
-		gui.text(146,61,"Combo: ")
-		guiTextAlignRight(236,61,p1.displayComboCounter, p1.comboCounterColor)
 		gui.text(146,53,"Combo Damage: ") -- Damage of P1's combo in total
 		guiTextAlignRight(236,53,p1.comboDamage) -- Damage of P1's combo in total
+		gui.text(146,61,"Combo: ")
+		guiTextAlignRight(236,61,p1.displayComboCounter, p1.comboCounterColor)
 		gui.text(146,69,"IPS: ") -- IPS for P1's combo
 		if p1.previousIps == 0 or not options.ips then --It flickers on and off if you don't check the menu option
 			guiTextAlignRight(236, 69, "OFF", "red")
@@ -1345,6 +1478,8 @@ function guiWriter() -- Writes the GUI
 		else
 			guiTextAlignRight(236, 77, "ON", "green")
 		end
+		-- gui.text(146, 85, "Frame Advantage: ")
+		-- guiTextAlignRight(236, 85, frameAdvantage)
 	end
 
 	if (p1.recording) then
