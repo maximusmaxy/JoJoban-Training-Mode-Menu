@@ -21,11 +21,8 @@
 
 - Player 1 Start
 P1
+a
 
 - Player 2 start
 P2
-l
-1
-l
-1
-da
+a

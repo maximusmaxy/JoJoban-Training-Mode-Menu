@@ -94,6 +94,15 @@ To perform the input playback change one of the hotkeys in the system settings m
 
 The included inputs.txt file is a dio vs polnaref combo. Start a round and push play to watch it or create your own.
 
+## Hitboxes
+
+The hitbox viewer is still undergoing development but is in a functional state. Due to a bug with FBA-rr you will need to download an additional file called hitbox.bin to use this feature.
+
+It currently has the following bugs:
+- Does not adjust based on the zoom state
+- Projectiles may be shown as active when they are not
+- The hitboxes are drawn 1 frame before the gui
+
 ## Credits
 
 Credits to Maxie and the HFTF OCEANIA community for the current version with menu features.

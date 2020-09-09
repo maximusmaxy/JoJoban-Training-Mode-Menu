@@ -51,7 +51,11 @@ local options = {
 	ips = true,
 	perfectAirTech = false,
 	reversal = 1,
-	throwTech = false
+	throwTech = false,
+	hitboxes = 1,
+	hitboxColor = 0xFF000000,
+	hurtboxColor = 0x0040FF00,
+	collisionboxColor = 0x00FF0000
 }
 
 -----------------------
@@ -84,10 +88,21 @@ local optionType = {
 	list = 4,
 	func = 5,
 	info = 6,
-	back = 7
+	color = 7,
+	slider = 8,
+	back = 9
 }
 
 local systemOptions = {
+	{
+		name = "Hitboxes",
+		key = "hitboxes",
+		type = optionType.list, 
+		list = {
+			"Disabled",
+			"Enabled"
+		}
+	},
 	{
 		name = "Music:",
 		key = "music",
@@ -105,7 +120,7 @@ local systemOptions = {
 		}
 	},
 	{
-		name = "Heavy Kick Hotkey:",
+		name = "Medium Kick Hotkey:",
 		key = "mediumKickHotkey",
 		type = optionType.list,
 		list = {
@@ -238,6 +253,31 @@ local enemyOptions = {
 	}
 }
 
+local colorOptions = {
+	{
+		name = "Hitbox Color: ",
+		key = "hitboxColor",
+		type = optionType.color,
+		default = 0xFF000000
+	},
+	{
+		name = "Hurtbox Color: ",
+		key = "hurtboxColor",
+		type = optionType.color,
+		default = 0x0040FF00
+	},
+	{
+		name = "Collisionbox Color: ",
+		key = "collisionboxColor",
+		type = optionType.color,
+		default = 0x00FF0000
+	},
+	{
+		name = "Return",
+		type = optionType.back
+	}
+}
+
 local rootOptions = {
 	{
 		name = "Enemy Settings",
@@ -253,6 +293,11 @@ local rootOptions = {
 		name = "System Settings",
 		type = optionType.subMenu,
 		options = systemOptions
+	},
+	{
+		name = "Color Settings",
+		type = optionType.subMenu,
+		options = colorOptions
 	},
 	{
 		name = "Save Settings",
@@ -286,13 +331,46 @@ local infoOptions = {
 	}
 }
 
+local colorSliderOptions = {
+	{
+		name = "Red: ",
+		type = optionType.slider,
+		mask = 0xFF000000,
+		shift = 24
+	},
+	{
+		name = "Green: ",
+		type = optionType.slider,
+		mask = 0xFF0000,
+		shift = 16
+	},
+	{
+		name = "Blue: ",
+		type = optionType.slider,
+		mask = 0xFF00,
+		shift = 8
+	},
+	{
+		name = "Reset to default",
+		type = optionType.func,
+		func = function() resetColor() end
+	},
+	{
+		name = "Return",
+		type = optionType.back
+	}
+}
+
 local menu = {
 	state = 0, --0 = closed, 1 = top menu, 2 = sub menu
 	index = 1,
 	previousIndex = 1,
+	previousSubIndex = 1,
 	options = rootOptions,
 	title = "Training Menu",
-	info = ""
+	info = "",
+	color = nil,
+	default = nil
 }
 
 local parserDictionary = {
@@ -307,6 +385,7 @@ local parserDictionary = {
 }
 
 local p1 = {
+	character = 0,
 	health = 0, 
 	previousHealth = 0,
 	damage = 0,
@@ -363,7 +442,8 @@ local p1 = {
 	previousCanAct = false,
 	frameAdvantage = 0,
 	buttons = {},
-	memory = nil
+	memory = nil,
+	memory2 = nil
 }
 
 -- Shallow copy of p1 with new tables created
@@ -384,8 +464,8 @@ end
 
 --Set individual memory values
 
-p1.memory = { 
-	character = 0x203488C,
+p1.memory = {  --0x203488C
+	character = 0x203489F,
 	health = 0x205BB28,
 	standHealth = 0x205BB48,
 	healthRefill = 0x20349CD,
@@ -408,11 +488,23 @@ p1.memory = {
 	standGuardAnimation = 0x00000000,
 	canAct1 = 0x02034941,
 	canAct2 = 0x02034A25,
-	throwTech = 0x02034A3C --1b0
+	throwTech = 0x02034A3C, --1b0
+	standFacing = 0x20350D9,
+	standActive = 0x02034A20
 }
 
+p1.memory2 = {
+	hitbox = 0x02034938, --AC
+	standHitbox = 0x2035178,
+	x = 0x20348E8,
+	y = 0x20348EC,
+	standX = 0x2035128,
+	standY = 0x203512C
+}
+
+
 p2.memory = { 
-	character = 0x2034CAC,
+	character = 0x2034CBF,
 	health = 0x205BB29,
 	standHealth = 0x205BB49,
 	healthRefill = 0x2034DED,
@@ -435,7 +527,18 @@ p2.memory = {
 	standGuardAnimation = 0x20355D2,
 	canAct1 = 0x00000000,
 	canAct2 = 0x00000000,
-	throwTech = 0x02034E5C
+	throwTech = 0x02034E5C,
+	standFacing = 0x020354F9,
+	standActive = 0x02034E40
+}
+
+p2.memory2 = {
+	hitbox = 0x02034D58,
+	standHitbox = 0x02035598,
+	x = 0x2034D08,
+	y = 0x2034D0C,
+	standX = 0x2035548,
+	standY = 0x203554C,
 }
 
 p1.health = memory.readbyte(p1.memory.health)
@@ -532,7 +635,7 @@ local characters = {
 	joseph = 0x04,
 	iggy = 0x05,
 	alessy = 0x06,
-	chaca = 0x07,
+	chaka = 0x07,
 	devo = 0x08,
 	nDoul = 0x09,
 	midler = 0x0A,
@@ -562,6 +665,35 @@ local gcStartup = { --Default is 10, 10
 	[characters.youngJoseph] = {13, 13}
 }
 
+local hitboxOffsets = {
+	0x61DEE9E, --Jotaro
+	0x61E0FCA, --Kakyoin
+	0x61E52DC, --Avdol
+	0x61E73A2, --Pol
+	0x61EA1EA, --Old Joseph
+	0x61EF37E, --Iggy
+	0x61F18B2, --Alessi
+	0x61F45D2, --Chaka
+	0x61F66EA, --Devo
+	0x61F9372, --Ndoul
+	0x61FC7B8, --Midler
+	0x61FDB7E, --DIO
+	0x61FFE3E, --Ice
+	0x62014E2, --Death13
+	0x62023EE, --SDio
+	0x62043BA, --Young Joseph
+	0x620608E, --Hol Horse
+	0x6208702, --Iced
+	0x620B042, --NKak
+	0x620D986, --BPol
+	0x620F196, --Petshop
+	0x0000000, --???
+	0x62104BE, --Mariah
+	0x621125C, --Hoingo
+	0x6212418, --Rubber
+	0x62145B6  --Khan
+}
+
 --Initialise input held count time
 function initButtons(player) 
 	for _, v in pairs(player.buttons) do
@@ -571,6 +703,32 @@ end
 
 initButtons(p1)
 initButtons(p2)
+
+local boxSets = {}
+local boxes = {}
+
+function readHitbox() 
+	local f, err = io.open("hitbox.bin", "rb")
+	if err then 
+		print("Error reading hitbox.bin")
+		print("Go to https://github.com/maximusmaxy/JoJoban-Training-Mode-Menu to download it.")
+		return
+	end
+	addWords(f, boxSets, 0x36242 / 2)
+	addWords(f, boxes, 0x19500 / 2)
+	f:close()
+end
+
+function addWords(file, table, length)
+	for i = 1, length, 1 do
+		local word = file:read(2)
+		if not word then break end
+		table[i] = string.byte(word,  1) * 0x100 + string.byte(word, 2)
+		if table[i] > 0x7FFF then --signed
+			table[i] = table[i] - 0x10000
+		end
+	end
+end
 
 -- Reads the inputs.txt file and turns it into an array of hex values containing p1 and p2 inputs
 function readInputsFile()
@@ -656,6 +814,13 @@ end
 --Input held for x frames
 function held(key, x)
 	return input.held[key] > x
+end
+
+function heldTable(table, x)
+	for i = 1, #table, 1 do
+		if held(table[i], x) then return true end
+	end
+	return false
 end
 
 --Turns a hex into both players inputs
@@ -823,6 +988,9 @@ function readPlayerMemory(player)
 	player.previousScaling = player.scaling
 	for k, v in pairs(player.memory) do
 		player[k] = memory.readbyte(v)
+	end
+	for k, v in pairs(player.memory2) do
+		player[k] = memory.readwordsigned(v)
 	end
 	if player.standGauge < player.standHealth then
 		player.standGauge = player.standHealth
@@ -1010,7 +1178,11 @@ function checkPlayerInput(player, other)
 	end
 
 	if held(player.buttons.sk, 15) then
-		player.loop = true
+		if options.strongKickHotkey == 2 then
+			other.loop = true
+		else
+			player.loop = true
+		end
 	end
 end
 
@@ -1114,13 +1286,13 @@ function controlPlayer(player, other)
 			throwTech(player)
 		-- Reversals
 		elseif player.canReversal then
-			-- Reversal
-			if options.reversal > 1 then
-				reversal(player)
 			-- Force Stand
-			elseif options.forceStand > 1 and canStand(player) then
+			if options.forceStand > 1 and canStand(player) then
 				setPlayback(player, { 0x80 })
 				memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
+			-- Reversal
+			elseif options.reversal > 1 then
+				reversal(player)
 			end
 		end
 	end
@@ -1243,7 +1415,9 @@ function canGuardAction(player)
 end
 
 function canAirTech(player)
-	return player.previousRiseFall == 0x00 and player.riseFall == 0xFF and player.height > 0 and player.hitstun == 1
+	return player.height > 0 and player.hitstun == 1 and player.riseFall == 0xFF and
+		(player.previousRiseFall == 0x00 or --Rising to falling
+		(player.previousAnimationState == 1 and player.animationState == 2)) -- Spiked
 end
 
 function canPerfectAirTech(player)
@@ -1298,13 +1472,13 @@ function updateMenu()
 		menuSelect()
 	elseif pressedTable(cancelInputs) then
 		menuCancel()
-	elseif repeating("P1 Up") then
+	elseif repeating(p1.buttons.up) then
 		menuUp()
-	elseif repeating("P1 Down") then
+	elseif repeating(p1.buttons.down) then
 		menuDown()
-	elseif repeating("P1 Left") then
+	elseif repeating(p1.buttons.left) then
 		menuLeft()
-	elseif repeating("P1 Right") then
+	elseif repeating(p1.buttons.right) then
 		menuRight()
 	end
 end
@@ -1331,13 +1505,27 @@ function menuSelect()
 		menu.options = infoOptions
 		menu.title = option.name
 		menu.info = option.infos
+	elseif option.type == optionType.color then
+		menu.color = option.key
+		menu.state = 4
+		menu.previousSubIndex = menu.index
+		menu.index = 1
+		menu.options = colorSliderOptions
+		menu.title = "Color Picker"
+		menu.default = option.default
 	end
 end
 
 function menuCancel()
-	if menu.state == 1 then --menu
+	if menu.state == 1 then -- menu
 		menuClose()
-	elseif menu.state > 1 then --sub menu
+	elseif menu.state == 4 then -- color picker
+		menu.state = 2
+		menu.index = menu.previousSubIndex
+		menu.options = colorOptions
+		menu.title = "Color Settings"
+		updateMenuInfo()
+	elseif menu.state > 1 then -- sub menu
 		menu.state = 1
 		menu.index = menu.previousIndex
 		menu.options = rootOptions
@@ -1363,6 +1551,13 @@ function menuLeft()
 		options[option.key] = (value == 1 and #option.list or value - 1)
 	elseif option.type == optionType.memory then
 		options[option.key] = (value == 0 and memory.readbyte(option.memory) or value - 1)
+	elseif option.type == optionType.slider then
+		local inc = (heldTable(selectInputs, 1) and 10 or 1)
+		local value = getMenuColor(option.mask, option.shift)
+		if (value - inc < 0) then 
+			inc = value
+		end
+		options[menu.color] = options[menu.color] - bit.lshift(inc, option.shift)
 	end
 end
 
@@ -1377,6 +1572,13 @@ function menuRight()
 		options[option.key] = (value >= #option.list and 1 or value + 1)
 	elseif option.type == optionType.memory then
 		options[option.key] = (value >= memory.readbyte(option.memory) and 0 or value + 1)
+	elseif option.type == optionType.slider then
+		local inc = (heldTable(selectInputs, 1) and 10 or 1)
+		local value = getMenuColor(option.mask, option.shift)
+		if (value + inc > 255) then
+			inc = 255 - value
+		end
+		options[menu.color] = options[menu.color] + bit.lshift(inc, option.shift)
 	end
 end
 
@@ -1400,7 +1602,19 @@ function updateMenuInfo()
 	end
 end
 
+function getMenuColor(mask, shift)
+	return bit.rshift(bit.band(mask, options[menu.color]), shift)
+end
+
+function resetColor()
+	options[menu.color] = menu.default
+end
+
 function guiWriter() -- Writes the GUI
+	if options.guiStyle ~= 1 then
+		drawHitboxes()
+	end
+
 	if menu.state > 0 then
 		drawMenu()
 	end
@@ -1547,7 +1761,12 @@ end
 function drawMenu()
 	gui.box(90, 36, 294, 188, colors.menuBackgroundColor, "white")
 	gui.text(110, 42, menu.title, colors.menuTitleColor)
-	if menu.state ~= 3 then
+	if menu.state == 3 then --info
+		for i = 1, #menu.info, 1 do
+			gui.text(100, 48 + i * 12, menu.info[i], colors.menuTitleColor)
+		end
+		gui.text(110, 172, "Return", colors.menuSelectedColor)
+	else
 		for i = 1, #menu.options, 1 do
 			local color = (menu.index == i and colors.menuSelectedColor or colors.menuUnselectedColor)
 			local option = menu.options[i]
@@ -1565,15 +1784,117 @@ function drawMenu()
 				local number = options[option.key]
 				local word = (number == memory.readbyte(option.memory) and "Max" or number)
 				gui.text(200, 48 + i * 12, word, color)
+			elseif option.type == optionType.slider then
+				local value = getMenuColor(option.mask, option.shift)
+				gui.text(150, 48 + i * 12, value, color)
 			end
 		end
-		gui.text(110, 172, menu.info, colors.menuTitleColor)
-	else
-		for i = 1, #menu.info, 1 do
-			gui.text(100, 48 + i * 12, menu.info[i], colors.menuTitleColor)
+		if menu.state == 4 then
+			local color = bit.bor(options[menu.color], 0xFF)
+			gui.box(200, 60, 240, 100, color, color)
+			gui.text(200, 112, "Hold A to increase by 10", menuTitleColor)
 		end
-		gui.text(110, 172, "Return", colors.menuSelectedColor)
+		gui.text(110, 172, menu.info, colors.menuTitleColor)
 	end
+end
+
+function drawHitboxes()
+	if options.hitboxes == 1 then
+		return
+	elseif options.hitboxes == 2 then
+		if #boxSets == 0 then return end
+
+		local zoomX = memory.readwordsigned(0x0205DBAA) / 384
+		local zoomY = memory.readwordsigned(0x0205DBAE) / 224
+		local screenX = memory.readwordsigned(0x0203145C)
+		local screenY = memory.readwordsigned(0x02031470)
+
+		-- Player 1
+		drawPlayerHitboxes(p1.hitbox, p1.x - screenX, p1.y + screenY, p1.facing, p1.character)
+		if p1.standActive == 1 then
+			drawPlayerHitboxes(p1.standHitbox, p1.standX - screenX, p1.standY + screenY, p1.standFacing, p1.character)
+		end
+
+		-- Player 2
+		drawPlayerHitboxes(p2.hitbox, p2.x - screenX, p2.y + screenY, p2.facing, p2.character)
+		if p2.standActive == 1 then
+			drawPlayerHitboxes(p2.standHitbox, p2.standX - screenX, p2.standY + screenY, p2.standFacing, p2.character)
+		end
+
+		--Projectiles
+		for i = 0, 63, 1 do
+			local projectile = memory.readbyte(0x0203848C + i * 0x420 + 0x00)
+			if projectile > 0 then
+				local pFacing = memory.readbyte(0x0203848C + i * 0x420 + 0x0D)
+				local pChar = memory.readbyte(0x0203848C + i * 0x420 + 0x13)
+				local pHitbox = memory.readword(0x0203848C + i * 0x420 + 0xAC)
+				local pX = memory.readwordsigned(0x0203848C + i * 0x420 + 0x5C)
+				local pY = memory.readwordsigned(0x0203848C + i * 0x420 + 0x60)
+				drawPlayerHitboxes(pHitbox, pX - screenX, pY + screenY, pFacing, pChar)
+			end
+		end
+	elseif options.hitboxes == 3 then
+		local adr = p1.memory.character
+
+		local px = memory.readwordsigned(adr + 0x5C)
+		local py = 224 - 16 - memory.readwordsigned(adr + 0x60)
+		
+		--Flip
+		local flip = (memory.readbytesigned(adr + 0x0d) == -1 and -1 or 1)
+	
+		--Hit Editor boxes
+		drawbox(0x2035984, px, py, flip, options.collisionboxColor)
+		
+		--Hurtbox
+		drawbox(0x203596C, px, py, flip, options.hurtboxColor)
+		drawbox(0x2035974, px, py, flip, options.hurtboxColor)
+		drawbox(0x203597C, px, py, flip, options.hurtboxColor)
+		
+		--Attack
+		drawbox(0x203595C, px, py, flip, options.hitboxColor)
+		drawbox(0x2035964, px, py, flip, options.hitboxColor)
+	end
+end
+
+function drawPlayerHitboxes(hitbox, x, y, facing, character)
+	if hitbox == 0 then return end
+
+	local index = hitbox + (hitboxOffsets[character + 1] - hitboxOffsets[1]) / 0x10
+
+	local atk1 = boxSets[index * 0x08 + 1]
+	local atk2 = boxSets[index * 0x08 + 2]
+	local head = boxSets[index * 0x08 + 3]
+	local torso = boxSets[index * 0x08 + 4]
+	local legs = boxSets[index * 0x08 + 5]
+	local col = boxSets[index * 0x08 + 6]
+
+	local flip = facing == 1 and -1 or 1
+
+	y = 208 - y + 252
+
+	drawbox2(atk1, x, y, flip, options.hitboxColor, character)
+	drawbox2(atk2, x, y, flip, options.hitboxColor, character)
+	drawbox2(head, x, y, flip, options.hurtboxColor, character)
+	drawbox2(torso, x, y, flip, options.hurtboxColor, character)
+	drawbox2(legs, x, y, flip, options.hurtboxColor, character)
+	drawbox2(col, x, y, flip, options.collisionboxColor, character)
+end
+
+function drawbox(adr, x, y, flip, color)
+	local boxx1 = x + memory.readwordsigned(adr) * flip
+	local boxxrad = boxx1 + memory.readword(adr + 0x02) * flip
+	local boxy1 = y - memory.readwordsigned(adr + 0x04)
+	local boxyrad = boxy1 - memory.readword(adr + 0x06)
+	gui.box(boxx1,boxy1,boxxrad,boxyrad,color)
+end
+
+function drawbox2(i, x, y, flip, color, character)
+	if i == 0 then return end
+	local boxx1 = x + boxes[i * 4 + 2 + character * 0x801] * flip
+	local boxxrad = boxx1 + boxes[i * 4 + 3 + character * 0x801] * flip
+	local boxy1 = y - boxes[i * 4 + 4 + character * 0x801]
+	local boxyrad = boxy1 - boxes[i * 4 + 5 + character * 0x801]
+	gui.box(boxx1,boxy1,boxxrad,boxyrad,color)
 end
 
 --register callbacks
@@ -1582,6 +1903,7 @@ emu.registerstart(function()
 	memory.writebyte(0x20312C1, 0x01) -- Unlock all characters
 	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
 	readSettings()
+	readHitbox()
 end)
 
 gui.register(function()
