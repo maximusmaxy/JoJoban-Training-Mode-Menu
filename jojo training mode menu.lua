@@ -13,11 +13,6 @@ local colors = {
 	menuTitleColor = "grey",
 	menuSelectedColor = "green",
 	menuUnselectedColor = "red",
-	comboCounterActiveColour = "blue", -- Colour of the combo counter if the combo hasn't dropped
-	inputHistoryA = "green", -- Colour of the letter A in the input history
-	inputHistoryB = "blue", -- Colour of the letter B in the input history
-	inputHistoryC = "red", -- Colour of the letter C in the input history
-	inputHistoryS = "yellow" -- Colour of the letter S in the input history
 }
 
 -- Toggleable hud locations for input history
@@ -55,7 +50,13 @@ local options = {
 	hitboxes = 1,
 	hitboxColor = 0xFF000000,
 	hurtboxColor = 0x0040FF00,
-	collisionboxColor = 0x00FF0000
+	collisionboxColor = 0x00FF0000,
+	orangeboxColor = 0xFF800000,
+	comboCounterActiveColor = 0x0000FFFF, -- Colour of the combo counter if the combo hasn't dropped
+	inputHistoryA = 0x00FF00FF, -- Colour of the letter A in the input history
+	inputHistoryB = 0x0000FFFF, -- Colour of the letter B in the input history
+	inputHistoryC = 0xFF0000FF, -- Colour of the letter C in the input history
+	inputHistoryS = 0xFFFF00FF -- Colour of the letter S in the input history
 }
 
 -----------------------
@@ -255,22 +256,58 @@ local enemyOptions = {
 
 local colorOptions = {
 	{
-		name = "Hitbox Color: ",
+		name = "Hitbox Color",
 		key = "hitboxColor",
 		type = optionType.color,
 		default = 0xFF000000
 	},
 	{
-		name = "Hurtbox Color: ",
+		name = "Hurtbox Color",
 		key = "hurtboxColor",
 		type = optionType.color,
 		default = 0x0040FF00
 	},
 	{
-		name = "Collisionbox Color: ",
+		name = "Collisionbox Color",
 		key = "collisionboxColor",
 		type = optionType.color,
 		default = 0x00FF0000
+	},
+	{
+		name = "Orangebox Color",
+		key = "orangeboxColor",
+		type = optionType.color,
+		default = 0xFF800000
+	},
+	{
+		name = "A Input Color",
+		key = "inputHistoryA",
+		type = optionType.color,
+		default = 0x00FF00FF
+	},
+	{
+		name = "B Input Color",
+		key = "inputHistoryB",
+		type = optionType.color,
+		default = 0x0000FFFF
+	},
+	{
+		name = "C Input Color",
+		key = "inputHistoryC",
+		type = optionType.color,
+		default = 0xFF0000FF
+	},
+	{
+		name = "S Input Color",
+		key = "inputHistoryS",
+		type = optionType.color,
+		default = 0xFFFF00FF
+	},
+	{
+		name = "Combo Color",
+		key = "comboCounterActiveColor",
+		type = optionType.color,
+		default = 0x0000FFFF
 	},
 	{
 		name = "Return",
@@ -480,7 +517,7 @@ p1.memory = {  --0x203488C
 	riseFall  = 0x00000000, --placeholder need to find this later
 	hitstun = 0x00000000, --placeholder need to find this later
 	blockstun = 0x00000000, --placeholder need to find this later
-	stand = 0x00000000, --placeholder need to find this later
+	stand = 0x2034A1F,
 	ips = 0x2034E9E,
 	scaling = 0x2034E9D,
 	height = 0x00000000,
@@ -706,6 +743,10 @@ initButtons(p2)
 
 local boxSets = {}
 local boxes = {}
+local boxCache = {
+	{ {}, {}, {} },
+	{ {}, {}, {} },
+}
 
 function readHitbox() 
 	local f, err = io.open("hitbox.bin", "rb")
@@ -1070,7 +1111,7 @@ function updatePlayer(player, other)
 
 	if player.combo >= 2 then
 		player.displayComboCounter = player.combo
-		player.comboCounterColor = colors.comboCounterActiveColour
+		player.comboCounterColor = options.comboCounterActiveColor
 	else
 		player.comboCounterColor = "white"
 	end
@@ -1636,19 +1677,19 @@ function guiWriter() -- Writes the GUI
 			local hex = p1.inputHistoryTable[i]
 			local buttonOffset = 0
 			if bit.band(hex, 0x10) == 0x10 then --A
-				gui.text(hud.xP1+hud.offset*4,hud.yP1-1-((11)*i*hud.scroll),"A", colors.inputHistoryA)
+				gui.text(hud.xP1+hud.offset*4,hud.yP1-1-((11)*i*hud.scroll),"A", options.inputHistoryA)
 				buttonOffset=buttonOffset+6
 			end
 			if bit.band(hex, 0x20) == 0x20 then --B
-				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"B", colors.inputHistoryB)
+				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"B", options.inputHistoryB)
 				buttonOffset=buttonOffset+6
 			end
 			if bit.band(hex, 0x40) == 0x40 then --C
-				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"C", colors.inputHistoryC)
+				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"C", options.inputHistoryC)
 				buttonOffset=buttonOffset+6
 			end
 			if bit.band(hex, 0x80) == 0x80 then --S
-				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"S", colors.inputHistoryS)
+				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"S", options.inputHistoryS)
 			end
 			if bit.band(hex, 0x0F) > 0 then
 				drawDpad(hud.xP1,hud.yP1-((11)*i*hud.scroll),hud.offset)
@@ -1713,19 +1754,19 @@ function guiWriter() -- Writes the GUI
 			local hex = p2.inputHistoryTable[i]
 			local buttonOffset=0
 			if bit.band(hex, 0x10) == 0x10 then --A
-				gui.text(hud.xP2+hud.offset*4,hud.yP2-1-((11)*i*hud.scroll),"A",colors.inputHistoryA)
+				gui.text(hud.xP2+hud.offset*4,hud.yP2-1-((11)*i*hud.scroll),"A",options.inputHistoryA)
 				buttonOffset=buttonOffset+6
 			end
 			if bit.band(hex, 0x20) == 0x20 then --B
-				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"B",colors.inputHistoryB)
+				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"B",options.inputHistoryB)
 				buttonOffset=buttonOffset+6
 			end
 			if bit.band(hex, 0x40) == 0x40 then --C
-				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"C",colors.inputHistoryC)
+				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"C",options.inputHistoryC)
 				buttonOffset=buttonOffset+6
 			end
 			if bit.band(hex, 0x80) == 0x80 then --S
-				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"S",colors.inputHistoryS)
+				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"S",options.inputHistoryS)
 			end
 			if bit.band(hex, 0x0F) > 0 then
 				drawDpad(hud.xP2,hud.yP2-((11)*i*hud.scroll),hud.offset)
@@ -1792,10 +1833,15 @@ function drawMenu()
 		if menu.state == 4 then
 			local color = bit.bor(options[menu.color], 0xFF)
 			gui.box(200, 60, 240, 100, color, color)
-			gui.text(200, 112, "Hold A to increase by 10", menuTitleColor)
+			gui.text(186, 112, "Hold A to increase by 10", colors.menuTitleColor)
 		end
 		gui.text(110, 172, menu.info, colors.menuTitleColor)
 	end
+end
+
+function updateHitboxes()
+	boxCache[2] = boxCache[1]
+	boxCache[1] = getHitboxes()
 end
 
 function drawHitboxes()
@@ -1804,34 +1850,10 @@ function drawHitboxes()
 	elseif options.hitboxes == 2 then
 		if #boxSets == 0 then return end
 
-		local zoomX = memory.readwordsigned(0x0205DBAA) / 384
-		local zoomY = memory.readwordsigned(0x0205DBAE) / 224
-		local screenX = memory.readwordsigned(0x0203145C)
-		local screenY = memory.readwordsigned(0x02031470)
-
-		-- Player 1
-		drawPlayerHitboxes(p1.hitbox, p1.x - screenX, p1.y + screenY, p1.facing, p1.character)
-		if p1.standActive == 1 then
-			drawPlayerHitboxes(p1.standHitbox, p1.standX - screenX, p1.standY + screenY, p1.standFacing, p1.character)
-		end
-
-		-- Player 2
-		drawPlayerHitboxes(p2.hitbox, p2.x - screenX, p2.y + screenY, p2.facing, p2.character)
-		if p2.standActive == 1 then
-			drawPlayerHitboxes(p2.standHitbox, p2.standX - screenX, p2.standY + screenY, p2.standFacing, p2.character)
-		end
-
-		--Projectiles
-		for i = 0, 63, 1 do
-			local projectile = memory.readbyte(0x0203848C + i * 0x420 + 0x00)
-			if projectile > 0 then
-				local pFacing = memory.readbyte(0x0203848C + i * 0x420 + 0x0D)
-				local pChar = memory.readbyte(0x0203848C + i * 0x420 + 0x13)
-				local pHitbox = memory.readword(0x0203848C + i * 0x420 + 0xAC)
-				local pX = memory.readwordsigned(0x0203848C + i * 0x420 + 0x5C)
-				local pY = memory.readwordsigned(0x0203848C + i * 0x420 + 0x60)
-				drawPlayerHitboxes(pHitbox, pX - screenX, pY + screenY, pFacing, pChar)
-			end
+		if fba then
+			drawCachedHitboxes(boxCache[2])
+		else
+			drawCachedHitboxes(boxCache[1])
 		end
 	elseif options.hitboxes == 3 then
 		local adr = p1.memory.character
@@ -1852,11 +1874,51 @@ function drawHitboxes()
 		
 		--Attack
 		drawbox(0x203595C, px, py, flip, options.hitboxColor)
-		drawbox(0x2035964, px, py, flip, options.hitboxColor)
+		drawbox(0x2035964, px, py, flip, options.orangeboxColor)
 	end
 end
 
-function drawPlayerHitboxes(hitbox, x, y, facing, character)
+function getHitboxes()
+	local boxData = {{}, {}, {}}
+
+	local zoomX = memory.readwordsigned(0x0205DBAA) / 384
+	local zoomY = memory.readwordsigned(0x0205DBAE) / 224
+	local screenX = memory.readwordsigned(0x0203145C)
+	local screenY = memory.readwordsigned(0x02031470)
+
+	-- Player 1
+	if p1.stand ~= 1 then
+		drawPlayerHitboxes(p1.hitbox, p1.x - screenX, p1.y + screenY, p1.facing, p1.character, boxData)
+	end
+	if p1.standActive == 1 then
+		drawPlayerHitboxes(p1.standHitbox, p1.standX - screenX, p1.standY + screenY, p1.standFacing, p1.character, boxData)
+	end
+
+	-- Player 2
+	if p2.stand ~= 1 then
+		drawPlayerHitboxes(p2.hitbox, p2.x - screenX, p2.y + screenY, p2.facing, p2.character, boxData)
+	end
+	if p2.standActive == 1 then
+		drawPlayerHitboxes(p2.standHitbox, p2.standX - screenX, p2.standY + screenY, p2.standFacing, p2.character, boxData)
+	end
+
+	--Projectiles
+	for i = 0, 63, 1 do
+		local projectile = memory.readbyte(0x0203848C + i * 0x420 + 0x00)
+		if projectile > 0 then
+			local pFacing = memory.readbyte(0x0203848C + i * 0x420 + 0x0D)
+			local pChar = memory.readbyte(0x0203848C + i * 0x420 + 0x13)
+			local pHitbox = memory.readword(0x0203848C + i * 0x420 + 0xAC)
+			local pX = memory.readwordsigned(0x0203848C + i * 0x420 + 0x5C)
+			local pY = memory.readwordsigned(0x0203848C + i * 0x420 + 0x60)
+			drawPlayerHitboxes(pHitbox, pX - screenX, pY + screenY, pFacing, pChar, boxData)
+		end
+	end
+
+	return boxData
+end
+
+function drawPlayerHitboxes(hitbox, x, y, facing, character, data)
 	if hitbox == 0 then return end
 
 	local index = hitbox + (hitboxOffsets[character + 1] - hitboxOffsets[1]) / 0x10
@@ -1872,12 +1934,12 @@ function drawPlayerHitboxes(hitbox, x, y, facing, character)
 
 	y = 208 - y + 252
 
-	drawbox2(atk1, x, y, flip, options.hitboxColor, character)
-	drawbox2(atk2, x, y, flip, options.hitboxColor, character)
-	drawbox2(head, x, y, flip, options.hurtboxColor, character)
-	drawbox2(torso, x, y, flip, options.hurtboxColor, character)
-	drawbox2(legs, x, y, flip, options.hurtboxColor, character)
-	drawbox2(col, x, y, flip, options.collisionboxColor, character)
+	drawbox2(atk1, x, y, flip, options.hitboxColor, character, data, 3)
+	drawbox2(atk2, x, y, flip, options.orangboxColor, character, data, 3)
+	drawbox2(head, x, y, flip, options.hurtboxColor, character, data, 2)
+	drawbox2(torso, x, y, flip, options.hurtboxColor, character, data, 2)
+	drawbox2(legs, x, y, flip, options.hurtboxColor, character, data, 2)
+	drawbox2(col, x, y, flip, options.collisionboxColor, character, data, 1)
 end
 
 function drawbox(adr, x, y, flip, color)
@@ -1888,13 +1950,22 @@ function drawbox(adr, x, y, flip, color)
 	gui.box(boxx1,boxy1,boxxrad,boxyrad,color)
 end
 
-function drawbox2(i, x, y, flip, color, character)
+function drawbox2(i, x, y, flip, color, character, data, layer)
 	if i == 0 then return end
 	local boxx1 = x + boxes[i * 4 + 2 + character * 0x801] * flip
 	local boxxrad = boxx1 + boxes[i * 4 + 3 + character * 0x801] * flip
 	local boxy1 = y - boxes[i * 4 + 4 + character * 0x801]
 	local boxyrad = boxy1 - boxes[i * 4 + 5 + character * 0x801]
-	gui.box(boxx1,boxy1,boxxrad,boxyrad,color)
+	table.insert(data[layer], { boxx1, boxy1, boxxrad, boxyrad, color })
+end
+
+function drawCachedHitboxes(data)
+	for layer = 1, 3, 1 do
+		local dataLayer = data[layer]
+		for i = 1, #dataLayer, 1 do
+			gui.box(dataLayer[i][1], dataLayer[i][2], dataLayer[i][3], dataLayer[i][4], dataLayer[i][5])
+		end
+	end
 end
 
 --register callbacks
@@ -1915,12 +1986,18 @@ emu.registerexit(function()
 	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
 end)
 
+local previousFrame = emu.framecount() - 1
+
 while true do 
-	memoryReader()
-	gameplayLoop()
-	inputSorter()
-	inputChecker()
-	inputHistoryRefresher()
-	characterControl()
+	local currentFrame = emu.framecount()
+	if currentFrame ~= previousFrame then -- if frame isn't repeated
+		memoryReader()
+		gameplayLoop()
+		inputSorter()
+		inputChecker()
+		inputHistoryRefresher()
+		characterControl()
+		updateHitboxes()
+	end
 	emu.frameadvance()
 end
