@@ -82,6 +82,20 @@ print("Holding down replay button will make it loop.")
 print("Pressing MK on the menu will restore p2 stand gauge")
 print("Pressing HK on the menu will restore p1 stand gauge")
 
+-- Aliasing memory and bitwise functions
+local readByte = memory.readbyte
+local readWord = memory.readword
+local readWordSigned = memory.readwordsigned
+local writeByte = memory.writebyte
+local writeWord = memory.writeword
+local writeWordSigned = memory.writewordsigned
+
+local lShift = bit.lshift
+local rShift = bit.rshift
+local band = bit.band
+local bor = bit.bor
+local bxor = bit.bxor
+
 local optionType = {
 	subMenu = 1,
 	bool = 2,
@@ -203,7 +217,8 @@ local enemyOptions = {
 			"Up/Neutral",
 			"Down",
 			"Toward",
-			"Away"
+			"Away",
+			"Random"
 		}
 	},
 	{
@@ -578,11 +593,11 @@ p2.memory2 = {
 	standY = 0x203554C,
 }
 
-p1.health = memory.readbyte(p1.memory.health)
-p1.standHealth = memory.readbyte(p1.memory.standHealth)
+p1.health = readByte(p1.memory.health)
+p1.standHealth = readByte(p1.memory.standHealth)
 p1.standGauge = p1.standHealth 
-p2.health = memory.readbyte(p2.memory.health)
-p2.standHealth = memory.readbyte(p2.memory.standHealth)
+p2.health = readByte(p2.memory.health)
+p2.standHealth = readByte(p2.memory.standHealth)
 p2.standGauge = p2.standHealth
 
 p1.name = "P1 "
@@ -591,6 +606,7 @@ p2.name = "P2 "
 p2.number = 2
 
 hud.scroll = hud.scrollFromBottom and 1 or -1
+hud.frameAdvantage = 0
 
 local buttons = {
 	up = "Up",
@@ -810,7 +826,7 @@ function parseInput(line)
 	for letter in line:lower():gmatch("%a") do
 		local inputHex = parserDictionary[letter]
 		if inputHex then
-			inputs.hex = bit.bor(inputs.hex, inputHex)
+			inputs.hex = bor(inputs.hex, inputHex)
 		end
 	end
 	return inputs
@@ -868,7 +884,7 @@ end
 function hexToInputTable(hex)
 	local table = {}
 	inputTableInsert(table, hex, "P1 ")
-	inputTableInsert(table, bit.rshift(hex, 8), "P2 ")
+	inputTableInsert(table, rShift(hex, 8), "P2 ")
 	return table
 end
 
@@ -882,7 +898,7 @@ end
 --Used by hextoinputtable
 function inputTableInsert(table, hex, player)
 	for k, v in pairs(inputDictionary) do
-		if bit.band(k, hex) == k then
+		if band(k, hex) == k then
 			table[player..v] = true
 		end
 	end
@@ -895,11 +911,11 @@ end
 
 --swaps two individual bits in a hex
 function swapBits(hex, p1, p2)
-	local bit1 = bit.band(bit.rshift(hex, p1), 1)
-	local bit2 = bit.band(bit.rshift(hex, p2), 1)
-	local x = bit.bxor(bit1, bit2)
-	x = bit.bor(bit.lshift(x, p1), bit.lshift(x, p2))
-	return bit.bxor(hex, x)
+	local bit1 = band(rShift(hex, p1), 1)
+	local bit2 = band(rShift(hex, p2), 1)
+	local x = bxor(bit1, bit2)
+	x = bor(lShift(x, p1), lShift(x, p2))
+	return bxor(hex, x)
 end
 
 --Copies values from one table to another
@@ -957,7 +973,7 @@ end
 function hexToInputString(hex)
 	local str = ""
 	for k, v in pairs(parserDictionary) do
-		if bit.band(hex, v) == v then
+		if band(hex, v) == v then
 			str = str..k
 		end
 	end
@@ -1028,10 +1044,10 @@ function readPlayerMemory(player)
 	player.previousIps = player.ips
 	player.previousScaling = player.scaling
 	for k, v in pairs(player.memory) do
-		player[k] = memory.readbyte(v)
+		player[k] = readByte(v)
 	end
 	for k, v in pairs(player.memory2) do
-		player[k] = memory.readwordsigned(v)
+		player[k] = readWordSigned(v)
 	end
 	if player.standGauge < player.standHealth then
 		player.standGauge = player.standHealth
@@ -1050,7 +1066,7 @@ function getPlayerInputHex(player)
 	local hex = 0
 	for k, v in pairs(inputDictionary) do
 		if input.current[player..v] then
-			hex = bit.bor(hex, k)
+			hex = bor(hex, k)
 		end
 	end
 	return hex
@@ -1063,8 +1079,8 @@ function inputHistoryRefresher()
 end
 
 function updatePlayerHistory(player)
-	local direction = bit.band(player.inputs, 0x0F)
-	local previousDirection = bit.band(player.previousInputs, 0x0F)
+	local direction = band(player.inputs, 0x0F)
+	local previousDirection = band(player.previousInputs, 0x0F)
 	if (player.inputs ~= player.previousInputs and player.inputs ~= 0) and
 			(player.previousInputs - previousDirection + player.inputs) ~= player.previousInputs and
 			(player.previousInputs - previousDirection ~= player.inputs - direction or direction ~= 0) and
@@ -1090,10 +1106,10 @@ function gameplayLoop() --main loop for gameplay calculations
 	updatePlayer(p1, p2)
 	updatePlayer(p2, p1)
 	-- updateFrameAdvantage(p1, p2)
-	memory.writebyte(0x205CC1A, options.music and 0x80 or 0x00) -- Toggle music off or on
-	memory.writebyte(0x20314B4, 0x63) -- Infinite Clock Time
+	writeByte(0x205CC1A, options.music and 0x80 or 0x00) -- Toggle music off or on
+	writeByte(0x20314B4, 0x63) -- Infinite Clock Time
 	if not options.ips then -- IPS
-		memory.writebyte(p1.memory.ips, 0x00)
+		writeByte(p1.memory.ips, 0x00)
 	end
 end
 
@@ -1118,18 +1134,18 @@ function updatePlayer(player, other)
 
 	--Health Regen
 	if options.healthRefill and ((player.previousCombo > 0 or other.damage ~= 0) and (player.combo == 0)) then
-		memory.writebyte(other.memory.healthRefill, 0x90)
+		writeByte(other.memory.healthRefill, 0x90)
 		other.damage = 0
 	end
 
 	--Meter refill
 	if options.meterRefill then
-		memory.writebyte(player.memory.meterRefill, 0x680A)
+		writeByte(player.memory.meterRefill, 0x680A)
 	end
 
 	--Stand refill 
 	if options.standGaugeRefill and player.standHealth == 0 then
-		memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
+		writeByte(player.memory.standGaugeRefill, player.standGaugeMax)
 	end
 
 	-- Frame Data
@@ -1179,11 +1195,11 @@ function checkPlayerInput(player, other)
 
 	if menu.state > 0 then 
 		if pressed(player.buttons.mk) then
-			memory.writebyte(other.memory.standGaugeRefill, other.standGaugeMax)
+			writeByte(other.memory.standGaugeRefill, other.standGaugeMax)
 		end
 
 		if pressed(player.buttons.sk) then
-			memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
+			writeByte(player.memory.standGaugeRefill, player.standGaugeMax)
 		end
 		return
 	end
@@ -1193,11 +1209,11 @@ function checkPlayerInput(player, other)
 		other.control = true
 
 		if pressed(player.buttons.mk) then
-			memory.writebyte(other.memory.standGaugeRefill, other.standGaugeMax)
+			writeByte(other.memory.standGaugeRefill, other.standGaugeMax)
 		end
 
 		if pressed(player.buttons.sk) then
-			memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
+			writeByte(player.memory.standGaugeRefill, player.standGaugeMax)
 		end
 	else
 		other.control = false
@@ -1301,7 +1317,7 @@ function controlPlayer(player, other)
 	end
 	-- Direction Lock
 	if player.previousControl and not player.control then
-		player.directionLock = bit.band(other.inputs, 0x0F) 
+		player.directionLock = band(other.inputs, 0x0F) 
 		player.directionLockFacing = player.facing
 	end
 	-- Player 2 menu option controls
@@ -1330,7 +1346,7 @@ function controlPlayer(player, other)
 			-- Force Stand
 			if options.forceStand > 1 and canStand(player) then
 				setPlayback(player, { 0x80 })
-				memory.writebyte(player.memory.standGaugeRefill, player.standGaugeMax)
+				writeByte(player.memory.standGaugeRefill, player.standGaugeMax)
 			-- Reversal
 			elseif options.reversal > 1 then
 				reversal(player)
@@ -1376,16 +1392,17 @@ end
 
 function airTech(player, perfect)
 	local inputs
-	if options.airTechDirection == 1 then
+	local direction = options.airTechDirection == 5 and math.random(4) or options.airTechDirection
+	if direction == 1 then
 		inputs = { 0x70 }
 		player.reversalCount = (player.stand and 10 or 3)
-	elseif options.airTechDirection == 2 then
+	elseif direction == 2 then
 		inputs = { 0x72}
 		player.reversalCount = 10
-	elseif options.airTechDirection == 3 then
+	elseif direction == 3 then
 		inputs = (player.facing == 1 and { 0x78 } or { 0x74 })
 		player.reversalCount = 10
-	elseif options.airTechDirection == 4 then
+	elseif direction == 4 then
 		inputs = (player.facing == 1 and { 0x74 } or { 0x78 })
 		player.reversalCount = 10
 	end
@@ -1401,8 +1418,8 @@ function airTech(player, perfect)
 end
 
 function pushBlock(player)
-	local direction = bit.band(0x0F, player.inputs)
-	local inputs = { bit.bor(0x70, direction) }
+	local direction = band(0x0F, player.inputs)
+	local inputs = { bor(0x70, direction) }
 	insertDelay(inputs, options.guardActionDelay, direction)
 	setPlayback(player, inputs)
 	player.reversalCount = 18 + options.guardActionDelay
@@ -1410,7 +1427,7 @@ end
 
 function guardCancel(player)
 	local inputs = (player.facing == 1 and { 0x08, 0x02, 0x1A } or { 0x04, 0x02, 0x16 })
-	insertDelay(inputs, options.guardActionDelay, bit.band(player.inputs, 0x0F))
+	insertDelay(inputs, options.guardActionDelay, band(player.inputs, 0x0F))
 	setPlayback(player, inputs)
 	--player.reversalCount = 15 Jotaro s.off
 end
@@ -1425,15 +1442,15 @@ function reversal(player)
 	player.playbackFlipped = false
 	player.loop = false
 	if options.reversal == 2 then -- A
-		inputs = { bit.bor(0x10, bit.band(0x0F, player.inputs)) }
+		inputs = { bor(0x10, band(0x0F, player.inputs)) }
 	elseif options.reversal == 3 then -- B
-		inputs = { bit.bor(0x20, bit.band(0x0F, player.inputs)) }
+		inputs = { bor(0x20, band(0x0F, player.inputs)) }
 	elseif options.reversal == 4 then -- C
-		inputs = { bit.bor(0x40, bit.band(0x0F, player.inputs)) }
+		inputs = { bor(0x40, band(0x0F, player.inputs)) }
 	elseif options.reversal == 5 then -- S
-		inputs = { bit.bor(0x80, bit.band(0x0F, player.inputs)) }
+		inputs = { bor(0x80, band(0x0F, player.inputs)) }
 	elseif options.reversal == 6 then -- ABC
-		inputs = { bit.bor(0x70, bit.band(0x0F, player.inputs)) }
+		inputs = { bor(0x70, band(0x0F, player.inputs)) }
 	elseif options.reversal == 7 then -- Recording
 		inputs = player.recorded
 		player.playbackFacing = player.recordedFacing
@@ -1502,7 +1519,7 @@ function openMenu()
 		menu.index = 1
 		menu.options = rootOptions
 		updateMenuInfo()
-		memory.writebyte(0x20713A3, 0x00); -- Bit mask that disables player input
+		writeByte(0x20713A3, 0x00); -- Bit mask that disables player input
 	else
 		menuClose()
 	end
@@ -1578,7 +1595,7 @@ end
 function menuClose()
 	menu.state = 0
 	gui.clearuncommitted()
-	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
+	writeByte(0x20713A3, 0xFF) -- Bit mask that enables player input
 end
 
 function menuLeft()
@@ -1591,14 +1608,14 @@ function menuLeft()
 	elseif option.type == optionType.list then
 		options[option.key] = (value == 1 and #option.list or value - 1)
 	elseif option.type == optionType.memory then
-		options[option.key] = (value == 0 and memory.readbyte(option.memory) or value - 1)
+		options[option.key] = (value == 0 and readByte(option.memory) or value - 1)
 	elseif option.type == optionType.slider then
 		local inc = (heldTable(selectInputs, 1) and 10 or 1)
 		local value = getMenuColor(option.mask, option.shift)
 		if (value - inc < 0) then 
 			inc = value
 		end
-		options[menu.color] = options[menu.color] - bit.lshift(inc, option.shift)
+		options[menu.color] = options[menu.color] - lShift(inc, option.shift)
 	end
 end
 
@@ -1612,14 +1629,14 @@ function menuRight()
 	elseif option.type == optionType.list then
 		options[option.key] = (value >= #option.list and 1 or value + 1)
 	elseif option.type == optionType.memory then
-		options[option.key] = (value >= memory.readbyte(option.memory) and 0 or value + 1)
+		options[option.key] = (value >= readByte(option.memory) and 0 or value + 1)
 	elseif option.type == optionType.slider then
 		local inc = (heldTable(selectInputs, 1) and 10 or 1)
 		local value = getMenuColor(option.mask, option.shift)
 		if (value + inc > 255) then
 			inc = 255 - value
 		end
-		options[menu.color] = options[menu.color] + bit.lshift(inc, option.shift)
+		options[menu.color] = options[menu.color] + lShift(inc, option.shift)
 	end
 end
 
@@ -1644,7 +1661,7 @@ function updateMenuInfo()
 end
 
 function getMenuColor(mask, shift)
-	return bit.rshift(bit.band(mask, options[menu.color]), shift)
+	return rShift(band(mask, options[menu.color]), shift)
 end
 
 function resetColor()
@@ -1676,34 +1693,34 @@ function guiWriter() -- Writes the GUI
 		for i = 1, historyLength, 1 do
 			local hex = p1.inputHistoryTable[i]
 			local buttonOffset = 0
-			if bit.band(hex, 0x10) == 0x10 then --A
+			if band(hex, 0x10) == 0x10 then --A
 				gui.text(hud.xP1+hud.offset*4,hud.yP1-1-((11)*i*hud.scroll),"A", options.inputHistoryA)
 				buttonOffset=buttonOffset+6
 			end
-			if bit.band(hex, 0x20) == 0x20 then --B
+			if band(hex, 0x20) == 0x20 then --B
 				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"B", options.inputHistoryB)
 				buttonOffset=buttonOffset+6
 			end
-			if bit.band(hex, 0x40) == 0x40 then --C
+			if band(hex, 0x40) == 0x40 then --C
 				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"C", options.inputHistoryC)
 				buttonOffset=buttonOffset+6
 			end
-			if bit.band(hex, 0x80) == 0x80 then --S
+			if band(hex, 0x80) == 0x80 then --S
 				gui.text(hud.xP1+hud.offset*4+buttonOffset,hud.yP1-1-((11)*i*hud.scroll),"S", options.inputHistoryS)
 			end
-			if bit.band(hex, 0x0F) > 0 then
+			if band(hex, 0x0F) > 0 then
 				drawDpad(hud.xP1,hud.yP1-((11)*i*hud.scroll),hud.offset)
 			end
-			if bit.band(hex, 0x01) == 0x01 then --Up
+			if band(hex, 0x01) == 0x01 then --Up
 				gui.box(hud.xP1+hud.offset+1, hud.yP1-(11*i*hud.scroll), hud.xP1+hud.offset*2-1, hud.yP1-hud.offset+1-(11*i*hud.scroll),"red")
 			end
-			if bit.band(hex, 0x02) == 0x02 then --Down
+			if band(hex, 0x02) == 0x02 then --Down
 				gui.box(hud.xP1+hud.offset+1, hud.yP1+hud.offset-(11*i*hud.scroll), hud.xP1+hud.offset*2-1, hud.yP1+hud.offset*2-(11*i*hud.scroll)-1,"red")
 			end
-			if bit.band(hex, 0x04) == 0x04 then --Left
+			if band(hex, 0x04) == 0x04 then --Left
 				gui.box(hud.xP1+1, hud.yP1+1-(11*i*hud.scroll), hud.xP1+hud.offset, hud.yP1+hud.offset-1-(11*i*hud.scroll),"red")
 			end
-			if bit.band(hex, 0x08) == 0x08 then --Right
+			if band(hex, 0x08) == 0x08 then --Right
 				gui.box(hud.xP1+hud.offset*2, hud.yP1+1-(11*i*hud.scroll), hud.xP1+hud.offset*3-1, hud.yP1+hud.offset-1-(11*i*hud.scroll),"red")
 			end
 		end
@@ -1753,34 +1770,34 @@ function guiWriter() -- Writes the GUI
 		for i = 1, 11, 1 do
 			local hex = p2.inputHistoryTable[i]
 			local buttonOffset=0
-			if bit.band(hex, 0x10) == 0x10 then --A
+			if band(hex, 0x10) == 0x10 then --A
 				gui.text(hud.xP2+hud.offset*4,hud.yP2-1-((11)*i*hud.scroll),"A",options.inputHistoryA)
 				buttonOffset=buttonOffset+6
 			end
-			if bit.band(hex, 0x20) == 0x20 then --B
+			if band(hex, 0x20) == 0x20 then --B
 				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"B",options.inputHistoryB)
 				buttonOffset=buttonOffset+6
 			end
-			if bit.band(hex, 0x40) == 0x40 then --C
+			if band(hex, 0x40) == 0x40 then --C
 				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"C",options.inputHistoryC)
 				buttonOffset=buttonOffset+6
 			end
-			if bit.band(hex, 0x80) == 0x80 then --S
+			if band(hex, 0x80) == 0x80 then --S
 				gui.text(hud.xP2+hud.offset*4+buttonOffset,hud.yP2-1-((11)*i*hud.scroll),"S",options.inputHistoryS)
 			end
-			if bit.band(hex, 0x0F) > 0 then
+			if band(hex, 0x0F) > 0 then
 				drawDpad(hud.xP2,hud.yP2-((11)*i*hud.scroll),hud.offset)
 			end
-			if bit.band(hex, 0x01) == 0x01 then --Up
+			if band(hex, 0x01) == 0x01 then --Up
 				gui.box(hud.xP2+hud.offset+1, hud.yP2-(11*i*hud.scroll), hud.xP2+hud.offset*2-1, hud.yP2-hud.offset+1-(11*i*hud.scroll),"red")
 			end
-			if bit.band(hex, 0x02) == 0x2 then --Down
+			if band(hex, 0x02) == 0x2 then --Down
 				gui.box(hud.xP2+hud.offset+1, hud.yP2+hud.offset-(11*i*hud.scroll), hud.xP2+hud.offset*2-1, hud.yP2+hud.offset*2-(11*i*hud.scroll)-1,"red")
 			end
-			if bit.band(hex, 0x04) == 0x04 then --Left
+			if band(hex, 0x04) == 0x04 then --Left
 				gui.box(hud.xP2+1, hud.yP2+1-(11*i*hud.scroll), hud.xP2+hud.offset, hud.yP2+hud.offset-1-(11*i*hud.scroll),"red")
 			end
-			if bit.band(hex, 0x08) == 0x08 then --Right
+			if band(hex, 0x08) == 0x08 then --Right
 				gui.box(hud.xP2+hud.offset*2, hud.yP2+1-(11*i*hud.scroll), hud.xP2+hud.offset*3-1, hud.yP2+hud.offset-1-(11*i*hud.scroll),"red")
 			end
 		end
@@ -1823,7 +1840,7 @@ function drawMenu()
 				gui.text(200, 48 + i * 12, word, color)
 			elseif option.type == optionType.memory then
 				local number = options[option.key]
-				local word = (number == memory.readbyte(option.memory) and "Max" or number)
+				local word = (number == readByte(option.memory) and "Max" or number)
 				gui.text(200, 48 + i * 12, word, color)
 			elseif option.type == optionType.slider then
 				local value = getMenuColor(option.mask, option.shift)
@@ -1831,7 +1848,7 @@ function drawMenu()
 			end
 		end
 		if menu.state == 4 then
-			local color = bit.bor(options[menu.color], 0xFF)
+			local color = bor(options[menu.color], 0xFF)
 			gui.box(200, 60, 240, 100, color, color)
 			gui.text(186, 112, "Hold A to increase by 10", colors.menuTitleColor)
 		end
@@ -1858,11 +1875,11 @@ function drawHitboxes()
 	elseif options.hitboxes == 3 then
 		local adr = p1.memory.character
 
-		local px = memory.readwordsigned(adr + 0x5C)
-		local py = 224 - 16 - memory.readwordsigned(adr + 0x60)
+		local px = readWordSigned(adr + 0x5C)
+		local py = 224 - 16 - readWordSigned(adr + 0x60)
 		
 		--Flip
-		local flip = (memory.readbytesigned(adr + 0x0d) == -1 and -1 or 1)
+		local flip = (readByteSigned(adr + 0x0d) == -1 and -1 or 1)
 	
 		--Hit Editor boxes
 		drawbox(0x2035984, px, py, flip, options.collisionboxColor)
@@ -1881,10 +1898,12 @@ end
 function getHitboxes()
 	local boxData = {{}, {}, {}}
 
-	local zoomX = memory.readwordsigned(0x0205DBAA) / 384
-	local zoomY = memory.readwordsigned(0x0205DBAE) / 224
-	local screenX = memory.readwordsigned(0x0203145C)
-	local screenY = memory.readwordsigned(0x02031470)
+	if #boxSets == 0 then return boxData end
+
+	local zoomX = readWordSigned(0x0205DBAA) / 384
+	local zoomY = readWordSigned(0x0205DBAE) / 224
+	local screenX = readWordSigned(0x0203145C)
+	local screenY = readWordSigned(0x02031470)
 
 	-- Player 1
 	if p1.stand ~= 1 then
@@ -1904,13 +1923,13 @@ function getHitboxes()
 
 	--Projectiles
 	for i = 0, 63, 1 do
-		local projectile = memory.readbyte(0x0203848C + i * 0x420 + 0x00)
+		local projectile = readByte(0x0203848C + i * 0x420 + 0x00)
 		if projectile > 0 then
-			local pFacing = memory.readbyte(0x0203848C + i * 0x420 + 0x0D)
-			local pChar = memory.readbyte(0x0203848C + i * 0x420 + 0x13)
-			local pHitbox = memory.readword(0x0203848C + i * 0x420 + 0xAC)
-			local pX = memory.readwordsigned(0x0203848C + i * 0x420 + 0x5C)
-			local pY = memory.readwordsigned(0x0203848C + i * 0x420 + 0x60)
+			local pFacing = readByte(0x0203848C + i * 0x420 + 0x0D)
+			local pChar = readByte(0x0203848C + i * 0x420 + 0x13)
+			local pHitbox = readWord(0x0203848C + i * 0x420 + 0xAC)
+			local pX = readWordSigned(0x0203848C + i * 0x420 + 0x5C)
+			local pY = readWordSigned(0x0203848C + i * 0x420 + 0x60)
 			drawPlayerHitboxes(pHitbox, pX - screenX, pY + screenY, pFacing, pChar, boxData)
 		end
 	end
@@ -1935,7 +1954,7 @@ function drawPlayerHitboxes(hitbox, x, y, facing, character, data)
 	y = 208 - y + 252
 
 	drawbox2(atk1, x, y, flip, options.hitboxColor, character, data, 3)
-	drawbox2(atk2, x, y, flip, options.orangboxColor, character, data, 3)
+	drawbox2(atk2, x, y, flip, options.orangeboxColor, character, data, 3)
 	drawbox2(head, x, y, flip, options.hurtboxColor, character, data, 2)
 	drawbox2(torso, x, y, flip, options.hurtboxColor, character, data, 2)
 	drawbox2(legs, x, y, flip, options.hurtboxColor, character, data, 2)
@@ -1943,10 +1962,10 @@ function drawPlayerHitboxes(hitbox, x, y, facing, character, data)
 end
 
 function drawbox(adr, x, y, flip, color)
-	local boxx1 = x + memory.readwordsigned(adr) * flip
-	local boxxrad = boxx1 + memory.readword(adr + 0x02) * flip
-	local boxy1 = y - memory.readwordsigned(adr + 0x04)
-	local boxyrad = boxy1 - memory.readword(adr + 0x06)
+	local boxx1 = x + readWordSigned(adr) * flip
+	local boxxrad = boxx1 + readWord(adr + 0x02) * flip
+	local boxy1 = y - readWordSigned(adr + 0x04)
+	local boxyrad = boxy1 - readWord(adr + 0x06)
 	gui.box(boxx1,boxy1,boxxrad,boxyrad,color)
 end
 
@@ -1970,9 +1989,9 @@ end
 
 --register callbacks
 emu.registerstart(function()
-	memory.writebyte(0x20713A8, 0x09) -- Infinite Credits
-	memory.writebyte(0x20312C1, 0x01) -- Unlock all characters
-	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
+	writeByte(0x20713A8, 0x09) -- Infinite Credits
+	writeByte(0x20312C1, 0x01) -- Unlock all characters
+	writeByte(0x20713A3, 0xFF) -- Bit mask that enables player input
 	readSettings()
 	readHitbox()
 end)
@@ -1983,7 +2002,7 @@ end)
 
 emu.registerexit(function()
 	gui.clearuncommitted()
-	memory.writebyte(0x20713A3, 0xFF) -- Bit mask that enables player input
+	writeByte(0x20713A3, 0xFF) -- Bit mask that enables player input
 end)
 
 local previousFrame = emu.framecount() - 1
@@ -1999,5 +2018,6 @@ while true do
 		characterControl()
 		updateHitboxes()
 	end
+	previousFrame = currentFrame
 	emu.frameadvance()
 end
