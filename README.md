@@ -1,5 +1,7 @@
 # Jojo training mode menu
 
+This script is outdated and not recommended for use. Please use the training menu for FBNeo included with Fightcade 2 located here https://github.com/maximusmaxy/JoJoban-Training-Mode-Menu-FBNeo
+
 This is the updated version of the jojo training mode with the new menu features. It includes everything the previous training modes had and much more. 
 
 Developed specifically for JoJo's Bizarre Adventure (Japan 990913, NO CD) (jojoban) though other versions should work.
