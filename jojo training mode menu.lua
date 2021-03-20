@@ -48,6 +48,7 @@ local options = {
 	reversal = 1,
 	throwTech = false,
 	hitboxes = 1,
+	timer = true,
 	hitboxColor = 0xFF000000,
 	hurtboxColor = 0x0040FF00,
 	collisionboxColor = 0x00FF0000,
@@ -86,9 +87,11 @@ print("Pressing HK on the menu will restore p1 stand gauge")
 local readByte = memory.readbyte
 local readWord = memory.readword
 local readWordSigned = memory.readwordsigned
+local readDWord = memory.readdword
+local readDWordSigned = memory.readdwordsigned
 local writeByte = memory.writebyte
 local writeWord = memory.writeword
-local writeWordSigned = memory.writewordsigned
+local writeDWord = memory.writedword
 
 local lShift = bit.lshift
 local rShift = bit.rshift
@@ -131,7 +134,8 @@ local systemOptions = {
 			"None",
 			"Simple",
 			"Advanced",
-			"P1 + P2"
+			"P1 + P2",
+			"TAS",
 		}
 	},
 	{
@@ -151,6 +155,11 @@ local systemOptions = {
 			"Replay P2",
 			"Input playback"
 		}
+	},
+	{
+		name = "Infinite Time",
+		key = "timer",
+		type = optionType.bool
 	},
 	{
 		name = "Return",
@@ -1106,8 +1115,10 @@ function gameplayLoop() --main loop for gameplay calculations
 	updatePlayer(p1, p2)
 	updatePlayer(p2, p1)
 	-- updateFrameAdvantage(p1, p2)
-	writeByte(0x205CC1A, options.music and 0x80 or 0x00) -- Toggle music off or on
-	writeByte(0x20314B4, 0x63) -- Infinite Clock Time
+	writeByte(0x205CC1A, options.music and 0x80 or 0x00) -- Toggle music off or 
+	if options.timer then
+		writeByte(0x20314B4, 0x63) -- Infinite Clock Time
+	end
 	if not options.ips then -- IPS
 		writeByte(p1.memory.ips, 0x00)
 	end
@@ -1726,7 +1737,7 @@ function guiWriter() -- Writes the GUI
 		end
 	end
 	
-	if options.guiStyle == 2 or options.guiStyle == 4 then
+	if options.guiStyle == 2 or options.guiStyle == 4 or options.guiStyle == 5 then
 		gui.text(8,50,"P1 Damage: "..tostring(p2.previousDamage)) -- Damage of P1's last hit
 		gui.text(8,66,"P1 Combo: ")
 		gui.text(48,66, p1.displayComboCounter, p1.comboCounterColor) -- P1's combo count
@@ -1801,7 +1812,34 @@ function guiWriter() -- Writes the GUI
 				gui.box(hud.xP2+hud.offset*2, hud.yP2+1-(11*i*hud.scroll), hud.xP2+hud.offset*3-1, hud.yP2+hud.offset-1-(11*i*hud.scroll),"red")
 			end
 		end
+	elseif options.guiStyle == 5 then
+		local fc = readDWord(0x2031448)
+		local rng = readDWord(0x20162E4)
+		local rng2 = readDWord(0x205C1B8)
+		local ips = readByte(0x2034E9E)
+		local ipsCount = readByte(0x2034E9F)
+		local rn1 = getNextRn2(rng2)
+		local rn2 = getNextRn2(rn1)
+		local rn3 = getNextRn2(rn2)
+		local rn4 = getNextRn2(rn3)
+		local rn5 = getNextRn2(rn4)
+		local rn1mod = modifyRn2(rn1)
+		local rn2mod = modifyRn2(rn2)
+		local rn3mod = modifyRn2(rn3)
+		local rn4mod = modifyRn2(rn4)
+		local rn5mod = modifyRn2(rn5)
+		gui.text(146, 43, "Frame Mod 8: "..(fc % 8))
+		gui.text(146, 51, "Rng 1: "..rng)
+		gui.text(146, 59, "Rng 2: "..rng2)
+		gui.text(146, 67, "IPS Flag: "..ips)
+		gui.text(146, 75, "IPS Count: "..ipsCount)
+		gui.text(146, 83, "Next 1: "..rn1mod..", "..tostring(getIPSTrigger(rn1mod, ipsCount + 1)))
+		gui.text(146, 91, "Next 2: "..rn2mod..", "..tostring(getIPSTrigger(rn2mod, ipsCount + 2)))
+		gui.text(146, 99, "Next 3: "..rn3mod..", "..tostring(getIPSTrigger(rn3mod, ipsCount + 3)))
+		gui.text(146, 107, "Next 4: "..rn4mod..", "..tostring(getIPSTrigger(rn4mod, ipsCount + 4)))
+		gui.text(146, 115, "Next 5: "..rn5mod..", "..tostring(getIPSTrigger(rn5mod, ipsCount + 5)))
 	end
+
 	if (p2.recording) then
 		gui.text(200,32,"Recording", "red")
 	elseif (p2.playbackCount > 0) then
@@ -1854,6 +1892,40 @@ function drawMenu()
 		end
 		gui.text(110, 172, menu.info, colors.menuTitleColor)
 	end
+end
+
+function getNextRn(seed)
+	local rng = seed or system.rng
+	rng = rng * 0x41C54E6D
+	rng = band(rng, 0xFFFFFFFF)
+	rng = rng + 3039
+	return rng
+end
+
+function modifyRn(rng)
+	rng = rShift(rng, 16)
+	rng = band(rng, 0x7FFF)
+	return rng
+end
+
+function getNextRn2(seed)
+	local rng = seed or system.rng2
+	rng = rng * 3 + 0x3711
+	rng = band(rng, 0xFFFF)
+	return rng
+end
+
+function modifyRn2(rng)
+	return band(rShift(rng, 8), 0xFF)
+end
+
+function getIPSTrigger(rng, count)
+	if count > 16 then
+		if band(rng, 0x3) == 0 then return true end
+	elseif count > 7 then
+		if band(rng, 0x7) == 0 then return true end
+	end
+	return false
 end
 
 function updateHitboxes()
